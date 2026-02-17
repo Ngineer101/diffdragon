@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react"
 import { Badge } from "@/components/ui/badge"
 import {
   Tooltip,
@@ -7,6 +8,8 @@ import {
 import { useAppStore } from "@/stores/app-store"
 import type { DiffFile } from "@/types/api"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
 
 const statusColors: Record<string, string> = {
   added: "bg-[#23863620] text-[#3fb950] border-[#23863640]",
@@ -33,9 +36,37 @@ export function FileItem({ file, index }: FileItemProps) {
   const activeFileIndex = useAppStore((s) => s.activeFileIndex)
   const reviewedFiles = useAppStore((s) => s.reviewedFiles)
   const selectFile = useAppStore((s) => s.selectFile)
+  const gitStatus = useAppStore((s) => s.gitStatus)
+  const diffMode = useAppStore((s) => s.diffMode)
+  const stageFile = useAppStore((s) => s.stageFile)
+  const unstageFile = useAppStore((s) => s.unstageFile)
+  const stagingPath = useAppStore((s) => s.stagingPath)
 
   const isActive = index === activeFileIndex
   const isReviewed = reviewedFiles.has(index)
+  const isStaged = gitStatus.stagedFiles.includes(file.path)
+  const isUnstaged = gitStatus.unstagedFiles.includes(file.path)
+  const canStage = diffMode === "unstaged" || isUnstaged
+  const canUnstage = (diffMode === "staged" || isStaged) && !canStage
+  const isMutating = stagingPath === file.path
+
+  const handleStage = async (event: MouseEvent) => {
+    event.stopPropagation()
+    try {
+      await stageFile(file.path)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to stage file")
+    }
+  }
+
+  const handleUnstage = async (event: MouseEvent) => {
+    event.stopPropagation()
+    try {
+      await unstageFile(file.path)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to unstage file")
+    }
+  }
 
   const lastSlash = file.path.lastIndexOf("/")
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
@@ -65,6 +96,28 @@ export function FileItem({ file, index }: FileItemProps) {
             <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-medium">
               {name}
             </span>
+            {canStage && (
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={handleStage}
+                disabled={isMutating}
+                className="h-5 px-1.5 text-[10px]"
+              >
+                {isMutating ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Stage"}
+              </Button>
+            )}
+            {canUnstage && (
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={handleUnstage}
+                disabled={isMutating}
+                className="h-5 px-1.5 text-[10px]"
+              >
+                {isMutating ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Unstage"}
+              </Button>
+            )}
             <Badge
               variant="outline"
               className={cn(

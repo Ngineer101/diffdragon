@@ -50,11 +50,37 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const prevFile = useAppStore((s) => s.prevFile)
   const activeFileIndex = useAppStore((s) => s.activeFileIndex)
   const files = useAppStore((s) => s.files)
+  const gitStatus = useAppStore((s) => s.gitStatus)
+  const diffMode = useAppStore((s) => s.diffMode)
+  const stageFile = useAppStore((s) => s.stageFile)
+  const unstageFile = useAppStore((s) => s.unstageFile)
+  const stagingPath = useAppStore((s) => s.stagingPath)
 
   const isReviewed = reviewedFiles.has(index)
   const hasAI = aiProvider !== "none"
   const isSummarizing = summarizingFile === index
   const isChecklistLoading = generatingChecklist === index
+  const isStaged = gitStatus.stagedFiles.includes(file.path)
+  const isUnstaged = gitStatus.unstagedFiles.includes(file.path)
+  const canStage = diffMode === "unstaged" || isUnstaged
+  const canUnstage = (diffMode === "staged" || isStaged) && !canStage
+  const isMutating = stagingPath === file.path
+
+  const handleStage = async () => {
+    try {
+      await stageFile(file.path)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to stage file")
+    }
+  }
+
+  const handleUnstage = async () => {
+    try {
+      await unstageFile(file.path)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to unstage file")
+    }
+  }
 
   return (
     <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-5">
@@ -144,6 +170,19 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
           <Check className="h-3.5 w-3.5" />
           {isReviewed ? "Reviewed" : "Mark Reviewed"}
         </Button>
+
+        {canStage && (
+          <Button variant="outline" size="sm" onClick={handleStage} disabled={isMutating}>
+            {isMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Stage File
+          </Button>
+        )}
+        {canUnstage && (
+          <Button variant="outline" size="sm" onClick={handleUnstage} disabled={isMutating}>
+            {isMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Unstage File
+          </Button>
+        )}
 
         <div className="ml-auto flex gap-1">
           <Button

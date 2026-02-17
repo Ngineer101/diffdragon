@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -37,6 +38,17 @@ func (h *DiffHolder) Replace(data *DiffData) {
 // In dev mode, the "/" handler is NOT registered here — main.go sets up a Vite proxy instead.
 func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos *RepoManager, ai *AIClient) {
 	buildDiffResponse := func(data *DiffData) map[string]interface{} {
+		gitStatus := GitStatus{
+			StagedFiles:   []string{},
+			UnstagedFiles: []string{},
+		}
+		if repo, ok := repos.Current(); ok {
+			status, err := GetGitStatus(repo.Path)
+			if err == nil {
+				gitStatus = status
+			}
+		}
+
 		if data == nil {
 			return map[string]interface{}{
 				"baseRef":       "",
@@ -44,6 +56,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 				"files":         []*DiffFile{},
 				"aiProvider":    cfg.AIProvider,
 				"stats":         computeStats(nil),
+				"gitStatus":     gitStatus,
 				"repos":         repos.List(),
 				"currentRepoId": repos.CurrentID(),
 			}
@@ -55,6 +68,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			"files":         data.Files,
 			"aiProvider":    cfg.AIProvider,
 			"stats":         computeStats(data),
+			"gitStatus":     gitStatus,
 			"repos":         repos.List(),
 			"currentRepoId": repos.CurrentID(),
 		}
@@ -415,6 +429,173 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			"completed": true,
 			"errors":    errors,
 			"files":     data.Files,
+		})
+	})
+
+	// API: return git status for the selected repository.
+	mux.HandleFunc("/api/git/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		status, err := GetGitStatus(repo.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})
+
+	// API: stage a full file path.
+	mux.HandleFunc("/api/git/stage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+		if strings.TrimSpace(req.Path) == "" {
+			http.Error(w, "Path is required", 400)
+			return
+		}
+
+		if err := StageFile(repo.Path, req.Path); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to reload diff: %v", err), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(holder.Get()))
+	})
+
+	// API: unstage a full file path.
+	mux.HandleFunc("/api/git/unstage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+		if strings.TrimSpace(req.Path) == "" {
+			http.Error(w, "Path is required", 400)
+			return
+		}
+
+		if err := UnstageFile(repo.Path, req.Path); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to reload diff: %v", err), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(holder.Get()))
+	})
+
+	// API: commit all staged changes and push.
+	mux.HandleFunc("/api/git/commit-push", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		var req struct {
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		message := strings.TrimSpace(req.Message)
+		if message == "" {
+			http.Error(w, "Commit message is required", 400)
+			return
+		}
+
+		status, err := GetGitStatus(repo.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if len(status.StagedFiles) == 0 {
+			http.Error(w, "No staged files to commit", 400)
+			return
+		}
+
+		commitOut, err := Commit(repo.Path, message)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		pushOut, err := Push(repo.Path, status)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Commit pushed but failed to reload diff: %v", err), 500)
+			return
+		}
+
+		newStatus, _ := GetGitStatus(repo.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":           true,
+			"commitOutput": strings.TrimSpace(commitOut),
+			"pushOutput":   strings.TrimSpace(pushOut),
+			"gitStatus":    newStatus,
+			"diff":         buildDiffResponse(holder.Get()),
 		})
 	})
 }

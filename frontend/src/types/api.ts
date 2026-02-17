@@ -40,8 +40,19 @@ export interface DiffResponse {
   files: DiffFile[]
   aiProvider: string
   stats: DiffStats
+  gitStatus: GitStatus
   repos: Repo[]
   currentRepoId: string
+}
+
+export interface GitStatus {
+  stagedFiles: string[]
+  unstagedFiles: string[]
+  currentBranch: string
+  upstreamBranch?: string
+  hasUpstream: boolean
+  ahead: number
+  behind: number
 }
 
 export interface SummarizeRequest {
@@ -99,6 +110,22 @@ export interface ReloadDiffRequest {
   head?: string
   staged?: boolean
   unstaged?: boolean
+}
+
+export interface FilePathRequest {
+  path: string
+}
+
+export interface CommitPushRequest {
+  message: string
+}
+
+export interface CommitPushResponse {
+  ok: boolean
+  commitOutput: string
+  pushOutput: string
+  gitStatus: GitStatus
+  diff: DiffResponse
 }
 
 export type DiffStyle = "unified" | "split"

@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Branch, DiffFile, DiffMode, DiffResponse, DiffStats, DiffStyle, Repo, ViewMode } from "@/types/api"
+import type { Branch, DiffFile, DiffMode, DiffResponse, DiffStats, DiffStyle, GitStatus, Repo, ViewMode } from "@/types/api"
 import * as api from "@/lib/api"
 
 interface AppState {
@@ -10,6 +10,7 @@ interface AppState {
   baseRef: string
   headRef: string
   aiProvider: string
+  gitStatus: GitStatus
 
   // Branch state
   branches: Branch[]
@@ -35,6 +36,8 @@ interface AppState {
   summarizingFile: number | null
   generatingChecklist: number | null
   summarizingAll: boolean
+  stagingPath: string | null
+  committingAndPushing: boolean
 
   // Actions
   fetchDiff: () => Promise<void>
@@ -54,8 +57,20 @@ interface AppState {
   summarizeFile: (index: number) => Promise<void>
   generateChecklist: (index: number) => Promise<void>
   summarizeAll: () => Promise<void>
+  stageFile: (path: string) => Promise<void>
+  unstageFile: (path: string) => Promise<void>
+  commitAndPush: (message: string) => Promise<{ commitOutput: string; pushOutput: string }>
   nextFile: () => void
   prevFile: () => void
+}
+
+const emptyGitStatus: GitStatus = {
+  stagedFiles: [],
+  unstagedFiles: [],
+  currentBranch: "",
+  hasUpstream: false,
+  ahead: 0,
+  behind: 0,
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -65,6 +80,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   baseRef: "",
   headRef: "",
   aiProvider: "none",
+  gitStatus: emptyGitStatus,
   branches: [],
   currentBranch: "",
   compareRemote: false,
@@ -82,6 +98,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   summarizingFile: null,
   generatingChecklist: null,
   summarizingAll: false,
+  stagingPath: null,
+  committingAndPushing: false,
 
   fetchDiff: async () => {
     set({ loading: true })
@@ -94,6 +112,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
         loading: false,
@@ -146,6 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
         activeFileIndex: -1,
         reviewedFiles: new Set(),
         reloading: false,
@@ -170,6 +190,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
         activeFileIndex: -1,
         reviewedFiles: new Set(),
         reloading: false,
@@ -192,6 +213,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
         activeFileIndex: -1,
@@ -301,6 +323,76 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch {
       set({ summarizingAll: false })
+    }
+  },
+
+  stageFile: async (path) => {
+    set({ stagingPath: path })
+    try {
+      const data = await api.stageFile({ path })
+      set({
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        stagingPath: null,
+      })
+    } catch (err) {
+      set({ stagingPath: null })
+      throw err
+    }
+  },
+
+  unstageFile: async (path) => {
+    set({ stagingPath: path })
+    try {
+      const data = await api.unstageFile({ path })
+      set({
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        stagingPath: null,
+      })
+    } catch (err) {
+      set({ stagingPath: null })
+      throw err
+    }
+  },
+
+  commitAndPush: async (message) => {
+    set({ committingAndPushing: true })
+    try {
+      const result = await api.commitAndPush({ message })
+      const data = result.diff
+      set({
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        activeFileIndex: -1,
+        reviewedFiles: new Set(),
+        committingAndPushing: false,
+      })
+      return { commitOutput: result.commitOutput, pushOutput: result.pushOutput }
+    } catch (err) {
+      set({ committingAndPushing: false })
+      throw err
     }
   },
 

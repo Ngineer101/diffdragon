@@ -1,6 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
-  Compass,
   Sparkles,
   Loader2,
   Globe,
@@ -10,8 +9,11 @@ import {
   GitBranch,
   FileCheck,
   FileDiff,
+  GitCommitHorizontal,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/app-store";
 
 export function TopBar() {
@@ -34,6 +36,10 @@ export function TopBar() {
   const currentRepoId = useAppStore((s) => s.currentRepoId);
   const addRepo = useAppStore((s) => s.addRepo);
   const selectRepo = useAppStore((s) => s.selectRepo);
+  const gitStatus = useAppStore((s) => s.gitStatus);
+  const commitAndPush = useAppStore((s) => s.commitAndPush);
+  const committingAndPushing = useAppStore((s) => s.committingAndPushing);
+  const [commitMessage, setCommitMessage] = useState("");
 
   useEffect(() => {
     fetchBranches();
@@ -44,6 +50,7 @@ export function TopBar() {
 
   const branchMode = diffMode === "branches";
   const hasRepo = !!currentRepoId;
+  const stagedCount = gitStatus.stagedFiles.length;
 
   const handleBaseChange = (value: string) => {
     reloadDiff({ base: value, head: headRef });
@@ -79,12 +86,37 @@ export function TopBar() {
     }
   };
 
+  const handleCommitAndPush = async () => {
+    if (!commitMessage.trim()) {
+      window.alert("Enter a commit message first.");
+      return;
+    }
+
+    try {
+      const result = await commitAndPush(commitMessage.trim());
+      setCommitMessage("");
+      const output = [result.commitOutput, result.pushOutput]
+        .filter(Boolean)
+        .join("\n");
+      if (output) {
+        window.alert(output);
+      }
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "Failed to commit and push",
+      );
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 backdrop-blur-sm">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-        <div className="flex items-center gap-2 text-lg font-bold text-[#39d2c0]">
-          <Compass className="h-5 w-5" />
-          DiffDragon
+        <div className="flex items-center gap-2">
+          <img
+            src="/logo.png"
+            alt="DiffDragon"
+            className="h-12 w-auto shrink-0 rounded-md object-contain"
+          />
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -187,6 +219,43 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex w-full items-center justify-end gap-1.5 sm:w-auto">
+        {hasRepo && (
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+              <GitCommitHorizontal className="h-3.5 w-3.5" />
+              <span>{stagedCount} staged</span>
+            </div>
+            <Input
+              value={commitMessage}
+              onChange={(e) => setCommitMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleCommitAndPush();
+                }
+              }}
+              placeholder="Commit message"
+              className="h-8 w-[230px] font-mono text-xs"
+            />
+            <Button
+              size="sm"
+              onClick={handleCommitAndPush}
+              disabled={
+                committingAndPushing ||
+                stagedCount === 0 ||
+                !commitMessage.trim()
+              }
+            >
+              {committingAndPushing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {committingAndPushing ? "Pushing..." : "Commit & Push"}
+            </Button>
+          </div>
+        )}
+
         {/* Split/Unified diff toggle */}
         <div className="flex items-center rounded-md border border-border">
           <ToggleButton
@@ -206,7 +275,11 @@ export function TopBar() {
         </div>
 
         {aiProvider !== "none" && hasRepo && (
-          <Button size="sm" onClick={() => summarizeAll()} disabled={summarizingAll || !hasRepo}>
+          <Button
+            size="sm"
+            onClick={() => summarizeAll()}
+            disabled={summarizingAll || !hasRepo}
+          >
             {summarizingAll ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
