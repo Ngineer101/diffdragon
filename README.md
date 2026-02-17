@@ -107,11 +107,103 @@ ollama pull llama3.1
 ./diffdragon --repo /path/to/your/repo --base main --port 9090
 ```
 
+## Install Once and Run Anywhere
+
+Yes, this is possible.
+
+DiffDragon builds to a single self-contained binary, so you can:
+1. clone and build once,
+2. move/copy the binary to a folder on your `PATH`,
+3. run it from any terminal, and
+4. optionally register it as a background service so it keeps running without an open terminal.
+
+### 1) Build once
+
+```bash
+git clone <your-repo-url>
+cd diffdragon
+make build
+```
+
+This produces a `diffdragon` binary in the repo root.
+
+### 2) Add to PATH
+
+#### macOS / Linux
+
+```bash
+sudo install -m 755 ./diffdragon /usr/local/bin/diffdragon
+```
+
+Now you can run:
+
+```bash
+diffdragon
+```
+
+#### Windows (PowerShell)
+
+1. Build `diffdragon.exe`
+2. Copy it to a stable folder, for example `C:\Tools\diffdragon\diffdragon.exe`
+3. Add `C:\Tools\diffdragon` to your User PATH
+
+Then open a new terminal and run:
+
+```powershell
+diffdragon.exe
+```
+
+### 3) Run as a local background service (no terminal required)
+
+You can host DiffDragon as a local service on any PC.
+
+#### macOS (launchd)
+
+Create `~/Library/LaunchAgents/com.diffdragon.app.plist` pointing to:
+- executable: `/usr/local/bin/diffdragon`
+- args: `--port 8384` (and any other flags you want)
+
+Load it:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.diffdragon.app.plist
+```
+
+#### Linux (systemd --user)
+
+Create `~/.config/systemd/user/diffdragon.service` with:
+
+```ini
+[Unit]
+Description=DiffDragon local service
+
+[Service]
+ExecStart=/usr/local/bin/diffdragon --port 8384
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+Enable and start:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now diffdragon
+```
+
+#### Windows (Task Scheduler)
+
+Use Task Scheduler to create a task that starts `diffdragon.exe` at login.
+Run whether user is logged in or not if you want it always available.
+
+After setup, open `http://127.0.0.1:8384` in your browser.
+
 ## CLI Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--repo` | `.` (current dir) | Path to the git repository |
+| `--repo` | *(empty)* | Optional initial git repository path |
 | `--base` | `main` | Base ref to diff against |
 | `--head` | `HEAD` | Head ref to diff |
 | `--staged` | `false` | Review staged changes only |
@@ -120,6 +212,8 @@ ollama pull llama3.1
 | `--ai` | `none` | AI provider: `none`, `claude`, `ollama` |
 | `--ollama-model` | `llama3.1` | Ollama model to use |
 | `--ollama-url` | `http://localhost:11434` | Ollama API endpoint |
+| `--dev` | `false` | Dev mode: proxy static files to Vite dev server |
+| `--vite-url` | `http://localhost:5173` | Vite dev server URL (used with `--dev`) |
 
 ## Environment Variables
 
