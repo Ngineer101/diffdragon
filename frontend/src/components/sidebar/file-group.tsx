@@ -41,7 +41,7 @@ export function FileGroup({ group, files }: FileGroupProps) {
 
   return (
     <Collapsible open={isOpen} onOpenChange={() => toggleGroup(group)}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg px-3 py-2 hover:bg-accent/60">
+      <CollapsibleTrigger className="flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 hover:bg-accent/60">
         <ChevronDown
           className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 data-[state=closed]:-rotate-90"
           data-state={isOpen ? "open" : "closed"}
@@ -54,7 +54,7 @@ export function FileGroup({ group, files }: FileGroupProps) {
           {files.length}
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent className="min-w-0 overflow-hidden">
         {files.map((f) => (
           <FileItem key={f._origIndex} file={f} index={f._origIndex} />
         ))}

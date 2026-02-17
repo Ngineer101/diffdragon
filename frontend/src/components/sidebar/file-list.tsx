@@ -45,7 +45,7 @@ export function FileList() {
     }
 
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex min-w-0 flex-col gap-0.5 overflow-hidden">
         {GROUP_ORDER.filter((g) => groups[g]?.length).map((g) => (
           <FileGroup key={g} group={g} files={groups[g]} />
         ))}
@@ -54,7 +54,7 @@ export function FileList() {
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex min-w-0 flex-col gap-0.5 overflow-hidden">
       {filtered.map((f) => (
         <FileItem key={f._origIndex} file={f} index={f._origIndex} />
       ))}

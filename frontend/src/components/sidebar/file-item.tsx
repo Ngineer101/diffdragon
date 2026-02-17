@@ -38,7 +38,6 @@ export function FileItem({ file, index }: FileItemProps) {
   const isReviewed = reviewedFiles.has(index)
 
   const lastSlash = file.path.lastIndexOf("/")
-  const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ""
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
 
   return (
@@ -47,13 +46,13 @@ export function FileItem({ file, index }: FileItemProps) {
         <button
           onClick={() => selectFile(index)}
           className={cn(
-            "flex w-full flex-col gap-1 rounded-lg border-l-[3px] border-l-transparent px-3 py-2.5 text-left transition-colors",
+            "flex w-full min-w-0 overflow-hidden flex-col gap-1 rounded-lg border-l-[3px] border-l-transparent px-3 py-2.5 text-left transition-colors",
             "hover:bg-accent/60",
             isActive && "border-l-primary bg-secondary",
             isReviewed && "opacity-50",
           )}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Badge
               variant="outline"
               className={cn(
@@ -63,27 +62,30 @@ export function FileItem({ file, index }: FileItemProps) {
             >
               {file.status.slice(0, 3)}
             </Badge>
-            <span className="min-w-0 truncate font-mono text-[13px] font-medium">
-              {dir && (
-                <span className="text-muted-foreground font-normal">{dir}</span>
-              )}
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-medium">
               {name}
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5 pl-0.5">
-            <span className="font-mono text-[11px]">
-              <span className="text-[#3fb950]">+{file.linesAdded}</span>{" "}
-              <span className="text-[#f85149]">&minus;{file.linesRemoved}</span>
             </span>
             <Badge
               variant="outline"
               className={cn(
-                "ml-auto shrink-0 px-2 py-0 text-[10px] font-semibold",
+                "shrink-0 px-2 py-0 text-[10px] font-semibold",
                 riskClass(file.riskScore),
               )}
             >
               {file.riskScore}
             </Badge>
+          </div>
+          <div className="flex min-w-0 items-center gap-2.5 pl-0.5">
+            <span className="shrink-0 font-mono text-[11px]">
+              <span className="text-[#3fb950]">+{file.linesAdded}</span>{" "}
+              <span className="text-[#f85149]">&minus;{file.linesRemoved}</span>
+            </span>
+            <span
+              className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-muted-foreground"
+              title={file.path}
+            >
+              {file.path}
+            </span>
           </div>
           {file.summary && (
             <p className="truncate pl-0.5 text-xs text-muted-foreground">

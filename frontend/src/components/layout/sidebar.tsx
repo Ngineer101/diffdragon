@@ -5,12 +5,15 @@ import { FileList } from "@/components/sidebar/file-list"
 
 export function Sidebar() {
   return (
-    <aside className="flex w-[360px] min-w-[320px] flex-col border-r border-border bg-card">
+    <aside className="flex w-[360px] min-w-[320px] overflow-hidden flex-col border-r border-border bg-card">
       <div className="flex flex-col gap-2 border-b border-border p-3">
         <ViewToggle />
         <FileSearch />
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea
+        className="flex-1"
+        viewportClassName="overflow-x-hidden [&>div]:!block [&>div]:!min-w-0"
+      >
         <div className="p-2">
           <FileList />
         </div>
