@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { DiffFile, DiffResponse, DiffStats, ViewMode } from "@/types/api"
+import type { Branch, DiffFile, DiffMode, DiffResponse, DiffStats, DiffStyle, Repo, ViewMode } from "@/types/api"
 import * as api from "@/lib/api"
 
 interface AppState {
@@ -11,21 +11,41 @@ interface AppState {
   headRef: string
   aiProvider: string
 
+  // Branch state
+  branches: Branch[]
+  currentBranch: string
+  compareRemote: boolean
+  diffMode: DiffMode
+
+  // Repository state
+  repos: Repo[]
+  currentRepoId: string
+
   // UI state
   activeFileIndex: number
   viewMode: ViewMode
+  diffStyle: DiffStyle
   searchQuery: string
   collapsedGroups: Record<string, boolean>
   reviewedFiles: Set<number>
 
   // Loading states
   loading: boolean
+  reloading: boolean
   summarizingFile: number | null
   generatingChecklist: number | null
   summarizingAll: boolean
 
   // Actions
   fetchDiff: () => Promise<void>
+  fetchRepos: () => Promise<void>
+  fetchBranches: () => Promise<void>
+  addRepo: (path: string, name?: string) => Promise<void>
+  selectRepo: (repoId: string) => Promise<void>
+  reloadDiff: (params: { base?: string; head?: string; staged?: boolean; unstaged?: boolean }) => Promise<void>
+  setCompareRemote: (remote: boolean) => void
+  setDiffMode: (mode: DiffMode) => void
+  setDiffStyle: (style: DiffStyle) => void
   selectFile: (index: number) => void
   setViewMode: (mode: ViewMode) => void
   setSearchQuery: (query: string) => void
@@ -45,12 +65,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   baseRef: "",
   headRef: "",
   aiProvider: "none",
+  branches: [],
+  currentBranch: "",
+  compareRemote: false,
+  diffMode: "branches",
+  repos: [],
+  currentRepoId: "",
   activeFileIndex: -1,
   viewMode: "risk",
+  diffStyle: "unified",
   searchQuery: "",
   collapsedGroups: {},
   reviewedFiles: new Set(),
   loading: true,
+  reloading: false,
   summarizingFile: null,
   generatingChecklist: null,
   summarizingAll: false,
@@ -66,12 +94,144 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
         loading: false,
       })
     } catch {
       set({ loading: false })
     }
   },
+
+  fetchRepos: async () => {
+    try {
+      const result = await api.fetchRepos()
+      set({
+        repos: result.repos,
+        currentRepoId: result.currentRepoId,
+      })
+    } catch {
+      // Silently fail
+    }
+  },
+
+  fetchBranches: async () => {
+    if (!get().currentRepoId) {
+      set({ branches: [], currentBranch: "" })
+      return
+    }
+
+    try {
+      const result = await api.fetchBranches()
+      set({
+        branches: result.branches,
+        currentBranch: result.current,
+      })
+    } catch {
+      // Silently fail — branch selector just won't populate
+    }
+  },
+
+  addRepo: async (path, name) => {
+    set({ reloading: true })
+    try {
+      const reposResult = await api.addRepo({ path, name })
+      const data = await api.fetchDiff()
+      set({
+        repos: reposResult.repos,
+        currentRepoId: reposResult.currentRepoId,
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        activeFileIndex: -1,
+        reviewedFiles: new Set(),
+        reloading: false,
+      })
+      await get().fetchBranches()
+    } catch (err) {
+      set({ reloading: false })
+      throw err
+    }
+  },
+
+  selectRepo: async (repoId) => {
+    set({ reloading: true })
+    try {
+      const data = await api.selectRepo({ repoId })
+      set({
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        activeFileIndex: -1,
+        reviewedFiles: new Set(),
+        reloading: false,
+      })
+      await get().fetchBranches()
+    } catch (err) {
+      set({ reloading: false })
+      throw err
+    }
+  },
+
+  reloadDiff: async (params) => {
+    set({ reloading: true })
+    try {
+      const data = await api.reloadDiff(params)
+      set({
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        activeFileIndex: -1,
+        reviewedFiles: new Set(),
+        reloading: false,
+      })
+    } catch {
+      set({ reloading: false })
+    }
+  },
+
+  setCompareRemote: (remote) => {
+    const { baseRef } = get()
+    set({ compareRemote: remote })
+    // Reload with origin/ prefix or stripped
+    let base = baseRef
+    if (remote && !base.startsWith("origin/")) {
+      base = `origin/${base}`
+    } else if (!remote && base.startsWith("origin/")) {
+      base = base.replace(/^origin\//, "")
+    }
+    get().reloadDiff({ base, head: "HEAD" })
+  },
+
+  setDiffMode: (mode) => {
+    set({ diffMode: mode })
+    if (mode === "staged") {
+      get().reloadDiff({ staged: true })
+    } else if (mode === "unstaged") {
+      get().reloadDiff({ unstaged: true })
+    } else {
+      // Switch back to branch comparison
+      const { baseRef, headRef } = get()
+      const base = baseRef === "staged" || baseRef === "index" ? "main" : baseRef
+      const head = headRef === "index" || headRef === "working tree" ? "HEAD" : headRef
+      get().reloadDiff({ base, head })
+    }
+  },
+
+  setDiffStyle: (style) => set({ diffStyle: style }),
 
   selectFile: (index) => set({ activeFileIndex: index }),
 

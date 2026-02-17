@@ -1,5 +1,6 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { Card } from "@/components/ui/card";
+import { useAppStore } from "@/stores/app-store";
 
 interface DiffViewerProps {
   rawDiff: string;
@@ -7,6 +8,8 @@ interface DiffViewerProps {
 }
 
 export function DiffViewer({ rawDiff, filePath }: DiffViewerProps) {
+  const diffStyle = useAppStore((s) => s.diffStyle);
+
   if (!rawDiff) {
     return (
       <Card className="mx-6 my-4 border-border bg-card">
@@ -30,7 +33,7 @@ export function DiffViewer({ rawDiff, filePath }: DiffViewerProps) {
         options={{
           theme: "pierre-dark",
           themeType: "dark",
-          diffStyle: "unified",
+          diffStyle,
           overflow: "scroll",
         }}
       />

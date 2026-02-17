@@ -40,6 +40,8 @@ export interface DiffResponse {
   files: DiffFile[]
   aiProvider: string
   stats: DiffStats
+  repos: Repo[]
+  currentRepoId: string
 }
 
 export interface SummarizeRequest {
@@ -61,3 +63,44 @@ export type SemanticGroup =
   | "style"
 
 export type ViewMode = "risk" | "grouped" | "flat"
+
+export interface Branch {
+  name: string
+  isRemote: boolean
+}
+
+export interface Repo {
+  id: string
+  name: string
+  path: string
+}
+
+export interface BranchesResponse {
+  branches: Branch[]
+  current: string
+}
+
+export interface ReposResponse {
+  repos: Repo[]
+  currentRepoId: string
+}
+
+export interface AddRepoRequest {
+  path: string
+  name?: string
+}
+
+export interface SelectRepoRequest {
+  repoId: string
+}
+
+export interface ReloadDiffRequest {
+  base?: string
+  head?: string
+  staged?: boolean
+  unstaged?: boolean
+}
+
+export type DiffStyle = "unified" | "split"
+
+export type DiffMode = "branches" | "staged" | "unstaged"
