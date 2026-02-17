@@ -2,7 +2,7 @@
 
 build:
 	cd frontend && pnpm install && pnpm build
-	go build -o diffpilot .
+	go build -o diffdragon .
 
 dev-frontend:
 	cd frontend && pnpm dev
@@ -11,5 +11,5 @@ dev-backend:
 	go run . --base main --ai claude
 
 clean:
-	rm -f diffpilot
+	rm -f diffdragon
 	rm -rf static/assets static/index.html

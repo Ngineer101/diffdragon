@@ -1,3 +1,3 @@
-module diffpilot
+module diffdragon
 
 go 1.21

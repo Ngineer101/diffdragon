@@ -10,28 +10,243 @@ import (
 	"sync"
 )
 
+// DiffHolder provides mutex-protected access to the current diff data,
+// allowing it to be replaced at runtime when the user changes branches.
+type DiffHolder struct {
+	mu   sync.RWMutex
+	data *DiffData
+}
+
+func NewDiffHolder(data *DiffData) *DiffHolder {
+	return &DiffHolder{data: data}
+}
+
+func (h *DiffHolder) Get() *DiffData {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.data
+}
+
+func (h *DiffHolder) Replace(data *DiffData) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.data = data
+}
+
 // RegisterHandlers sets up all HTTP routes on the given mux.
-func RegisterHandlers(mux *http.ServeMux, cfg *Config, data *DiffData, ai *AIClient) {
-	// Serve the embedded static frontend
-	staticFS, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		log.Fatalf("Failed to set up static files: %v", err)
+// In dev mode, the "/" handler is NOT registered here — main.go sets up a Vite proxy instead.
+func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos *RepoManager, ai *AIClient) {
+	buildDiffResponse := func(data *DiffData) map[string]interface{} {
+		if data == nil {
+			return map[string]interface{}{
+				"baseRef":       "",
+				"headRef":       "",
+				"files":         []*DiffFile{},
+				"aiProvider":    cfg.AIProvider,
+				"stats":         computeStats(nil),
+				"repos":         repos.List(),
+				"currentRepoId": repos.CurrentID(),
+			}
+		}
+
+		return map[string]interface{}{
+			"baseRef":       data.BaseRef,
+			"headRef":       data.HeadRef,
+			"files":         data.Files,
+			"aiProvider":    cfg.AIProvider,
+			"stats":         computeStats(data),
+			"repos":         repos.List(),
+			"currentRepoId": repos.CurrentID(),
+		}
 	}
-	mux.Handle("/", spaHandler(staticFS))
+
+	reloadCurrentRepo := func() error {
+		repo, ok := repos.Current()
+		if !ok {
+			holder.Replace(nil)
+			return nil
+		}
+
+		cfg.RepoPath = repo.Path
+		diffData, err := ParseGitDiff(cfg)
+		if err != nil && !cfg.Staged && !cfg.Unstaged {
+			cfg.Base = ResolveDefaultBaseRef(repo.Path)
+			cfg.Head = "HEAD"
+			diffData, err = ParseGitDiff(cfg)
+		}
+		if err != nil {
+			return err
+		}
+		AnalyzeDiff(diffData)
+		holder.Replace(diffData)
+		return nil
+	}
+	if !cfg.Dev {
+		// Serve the embedded static frontend (production mode only)
+		staticFS, err := fs.Sub(staticFiles, "static")
+		if err != nil {
+			log.Fatalf("Failed to set up static files: %v", err)
+		}
+		mux.Handle("/", spaHandler(staticFS))
+	}
 
 	// API: return the full diff data
 	mux.HandleFunc("/api/diff", func(w http.ResponseWriter, r *http.Request) {
+		data := holder.Get()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(data))
+	})
+
+	// API: list repositories and current selection
+	mux.HandleFunc("/api/repos", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		response := map[string]interface{}{
-			"baseRef":    data.BaseRef,
-			"headRef":    data.HeadRef,
-			"files":      data.Files,
-			"aiProvider": cfg.AIProvider,
-			"stats":      computeStats(data),
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"repos":         repos.List(),
+				"currentRepoId": repos.CurrentID(),
+			})
+			return
 		}
 
-		json.NewEncoder(w).Encode(response)
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		repo, err := repos.Add(req.Path, req.Name)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+
+		if _, err := repos.Select(repo.ID); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"repos":         repos.List(),
+			"currentRepoId": repos.CurrentID(),
+		})
+	})
+
+	// API: switch active repository
+	mux.HandleFunc("/api/repos/select", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			RepoID string `json:"repoId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		if _, err := repos.Select(req.RepoID); err != nil {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(holder.Get()))
+	})
+
+	// API: list all branches
+	mux.HandleFunc("/api/branches", func(w http.ResponseWriter, r *http.Request) {
+		repo, ok := repos.Current()
+		if !ok {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"branches": []Branch{},
+				"current":  "",
+			})
+			return
+		}
+
+		cfg.RepoPath = repo.Path
+		branches, current, err := ListBranches(cfg.RepoPath)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"branches": branches,
+			"current":  current,
+		})
+	})
+
+	// API: reload diff with new refs
+	mux.HandleFunc("/api/diff/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			Base     string `json:"base"`
+			Head     string `json:"head"`
+			Staged   *bool  `json:"staged"`
+			Unstaged *bool  `json:"unstaged"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+		cfg.RepoPath = repo.Path
+
+		// Update config
+		cfg.Staged = req.Staged != nil && *req.Staged
+		cfg.Unstaged = req.Unstaged != nil && *req.Unstaged
+		if !cfg.Staged && !cfg.Unstaged {
+			if req.Base != "" {
+				cfg.Base = req.Base
+			}
+			if req.Head != "" {
+				cfg.Head = req.Head
+			}
+		}
+
+		// Re-parse the diff
+		diffData, err := ParseGitDiff(cfg)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
+			return
+		}
+		AnalyzeDiff(diffData)
+		holder.Replace(diffData)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(diffData))
 	})
 
 	// API: summarize a specific file
@@ -55,6 +270,11 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, data *DiffData, ai *AICli
 			return
 		}
 
+		data := holder.Get()
+		if data == nil {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
 		if req.FileIndex < 0 || req.FileIndex >= len(data.Files) {
 			http.Error(w, "File index out of range", 400)
 			return
@@ -109,6 +329,11 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, data *DiffData, ai *AICli
 			return
 		}
 
+		data := holder.Get()
+		if data == nil {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
 		if req.FileIndex < 0 || req.FileIndex >= len(data.Files) {
 			http.Error(w, "File index out of range", 400)
 			return
@@ -145,6 +370,12 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, data *DiffData, ai *AICli
 			if parsed, err := strconv.Atoi(c); err == nil && parsed > 0 && parsed <= 10 {
 				concurrency = parsed
 			}
+		}
+
+		data := holder.Get()
+		if data == nil {
+			http.Error(w, "No repository selected", 400)
+			return
 		}
 
 		// Run summarization concurrently
@@ -215,6 +446,20 @@ func spaHandler(fsys fs.FS) http.Handler {
 
 // computeStats calculates aggregate statistics about the diff.
 func computeStats(data *DiffData) map[string]interface{} {
+	if data == nil {
+		return map[string]interface{}{
+			"totalFiles":   0,
+			"totalAdded":   0,
+			"totalRemoved": 0,
+			"groupCounts":  map[string]int{},
+			"riskDistribution": map[string]int{
+				"high":   0,
+				"medium": 0,
+				"low":    0,
+			},
+		}
+	}
+
 	totalAdded := 0
 	totalRemoved := 0
 	groupCounts := make(map[string]int)

@@ -221,6 +221,83 @@ func parseHunks(lines []string) []*DiffHunk {
 	return hunks
 }
 
+// Branch represents a git branch.
+type Branch struct {
+	Name     string `json:"name"`
+	IsRemote bool   `json:"isRemote"`
+}
+
+// ListBranches returns all local and remote branches plus the current branch name.
+func ListBranches(repoPath string) ([]Branch, string, error) {
+	// Get current branch
+	currentCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	currentCmd.Dir = repoPath
+	currentOut, err := currentCmd.Output()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get current branch: %w", err)
+	}
+	current := strings.TrimSpace(string(currentOut))
+
+	// Get all branches
+	branchCmd := exec.Command("git", "branch", "-a", "--format=%(refname:short)")
+	branchCmd.Dir = repoPath
+	branchOut, err := branchCmd.Output()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to list branches: %w", err)
+	}
+
+	seen := make(map[string]bool)
+	var branches []Branch
+	for _, line := range strings.Split(strings.TrimSpace(string(branchOut)), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || seen[name] {
+			continue
+		}
+		// Skip HEAD pointer entries like "origin/HEAD"
+		if strings.HasSuffix(name, "/HEAD") {
+			continue
+		}
+		seen[name] = true
+		isRemote := strings.Contains(name, "/")
+		branches = append(branches, Branch{Name: name, IsRemote: isRemote})
+	}
+
+	return branches, current, nil
+}
+
+// ResolveDefaultBaseRef picks a sensible base branch for a repository.
+// Preference order: main, master, then current branch.
+func ResolveDefaultBaseRef(repoPath string) string {
+	for _, candidate := range []string{"main", "master"} {
+		if branchExists(repoPath, candidate) {
+			return candidate
+		}
+	}
+
+	currentCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	currentCmd.Dir = repoPath
+	if out, err := currentCmd.Output(); err == nil {
+		current := strings.TrimSpace(string(out))
+		if current != "" && current != "HEAD" {
+			return current
+		}
+	}
+
+	return "HEAD"
+}
+
+func branchExists(repoPath string, branch string) bool {
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/heads/%s", branch))
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+
+	cmd = exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/remotes/origin/%s", branch))
+	cmd.Dir = repoPath
+	return cmd.Run() == nil
+}
+
 // detectLanguage guesses the programming language from the file extension.
 func detectLanguage(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
