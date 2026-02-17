@@ -141,8 +141,8 @@ func parseFileDiff(section string) *DiffFile {
 	header := lines[0]
 	parts := strings.Fields(header)
 	if len(parts) >= 4 {
-		file.Path = strings.TrimPrefix(parts[3], "b/")
-		oldPath := strings.TrimPrefix(parts[2], "a/")
+		file.Path = normalizeGitDiffPath(parts[3])
+		oldPath := normalizeGitDiffPath(parts[2])
 		if oldPath != file.Path {
 			file.OldPath = oldPath
 		}
@@ -351,4 +351,15 @@ func detectLanguage(path string) string {
 	}
 
 	return "plaintext"
+}
+
+func normalizeGitDiffPath(token string) string {
+	token = strings.Trim(token, "\"")
+	if token == "/dev/null" {
+		return token
+	}
+	if slash := strings.Index(token, "/"); slash >= 0 && slash < len(token)-1 {
+		return token[slash+1:]
+	}
+	return token
 }

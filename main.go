@@ -81,6 +81,11 @@ func main() {
 	var diffData *DiffData
 	if cfg.RepoPath != "" {
 		parsedDiff, err := ParseGitDiff(cfg)
+		if err != nil && !cfg.Staged && !cfg.Unstaged {
+			cfg.Base = ResolveDefaultBaseRef(cfg.RepoPath)
+			cfg.Head = "HEAD"
+			parsedDiff, err = ParseGitDiff(cfg)
+		}
 		if err != nil {
 			log.Fatalf("Failed to parse git diff: %v", err)
 		}
@@ -130,6 +135,7 @@ func main() {
 
 func parseFlags() *Config {
 	cfg := &Config{}
+	portExplicit := false
 
 	flag.StringVar(&cfg.RepoPath, "repo", "", "Optional initial git repository path")
 	flag.StringVar(&cfg.Base, "base", "main", "Base ref to diff against")
@@ -142,5 +148,15 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.ViteURL, "vite-url", "http://localhost:5173", "Vite dev server URL (used with --dev)")
 
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "port" {
+			portExplicit = true
+		}
+	})
+
+	if cfg.Dev && !portExplicit {
+		cfg.Port = 8385
+	}
+
 	return cfg
 }
