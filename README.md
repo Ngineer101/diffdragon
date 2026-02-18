@@ -192,6 +192,18 @@ systemctl --user daemon-reload
 systemctl --user enable --now diffdragon
 ```
 
+Update an already running local service (rebuild + reinstall + restart):
+
+```bash
+make release-service-update
+```
+
+If your service name differs, override it:
+
+```bash
+make release-service-update SERVICE=diffdragon
+```
+
 #### Windows (Task Scheduler)
 
 Use Task Scheduler to create a task that starts `diffdragon.exe` at login.

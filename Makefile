@@ -1,4 +1,7 @@
-.PHONY: build dev-frontend dev-backend clean
+.PHONY: build dev-frontend dev-backend release-service-update clean
+
+BINDIR ?= /usr/local/bin
+SERVICE ?= diffdragon
 
 build:
 	cd frontend && pnpm install && pnpm build
@@ -9,6 +12,12 @@ dev-frontend:
 
 dev-backend:
 	go run . --base main --ai claude
+
+release-service-update: build
+	sudo install -m 755 ./diffdragon $(BINDIR)/diffdragon
+	systemctl --user daemon-reload
+	systemctl --user restart $(SERVICE)
+	systemctl --user --no-pager --lines=3 status $(SERVICE)
 
 clean:
 	rm -f diffdragon
