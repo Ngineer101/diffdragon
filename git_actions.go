@@ -17,6 +17,12 @@ type GitStatus struct {
 	Behind         int      `json:"behind"`
 }
 
+type SyncResult struct {
+	Output  string
+	Fetched bool
+	Pulled  bool
+}
+
 func GetGitStatus(repoPath string) (GitStatus, error) {
 	stagedOut, err := runGit(repoPath, "diff", "--name-only", "--cached")
 	if err != nil {
@@ -107,6 +113,50 @@ func Push(repoPath string, status GitStatus) (string, error) {
 		return out, fmt.Errorf("failed to push and set upstream: %w", err)
 	}
 	return out, nil
+}
+
+func SyncWithRemote(repoPath string) (SyncResult, error) {
+	status, err := GetGitStatus(repoPath)
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("failed to get git status before sync: %w", err)
+	}
+
+	if !status.HasUpstream {
+		return SyncResult{}, nil
+	}
+
+	fetchOut, err := runGit(repoPath, "fetch", "--prune")
+	if err != nil {
+		return SyncResult{Output: strings.TrimSpace(fetchOut), Fetched: true}, fmt.Errorf("failed to fetch from remote: %w", err)
+	}
+
+	status, err = GetGitStatus(repoPath)
+	if err != nil {
+		return SyncResult{Output: strings.TrimSpace(fetchOut), Fetched: true}, fmt.Errorf("failed to refresh git status after fetch: %w", err)
+	}
+
+	if status.Behind == 0 {
+		return SyncResult{
+			Output:  strings.TrimSpace(fetchOut),
+			Fetched: true,
+			Pulled:  false,
+		}, nil
+	}
+
+	pullOut, err := runGit(repoPath, "pull", "--rebase", "--autostash")
+	if err != nil {
+		return SyncResult{
+			Output:  strings.TrimSpace(fetchOut + "\n" + pullOut),
+			Fetched: true,
+			Pulled:  true,
+		}, fmt.Errorf("failed to pull remote changes before push: %w", err)
+	}
+
+	return SyncResult{
+		Output:  strings.TrimSpace(fetchOut + "\n" + pullOut),
+		Fetched: true,
+		Pulled:  true,
+	}, nil
 }
 
 func runGit(repoPath string, args ...string) (string, error) {

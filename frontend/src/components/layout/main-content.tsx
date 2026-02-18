@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { Eye } from "lucide-react"
+import { Eye, FileSearch } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/stores/app-store"
 import { FileDetailHeader } from "@/components/detail/file-detail-header"
@@ -17,6 +17,22 @@ export function MainContent() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
   }, [activeFileIndex])
+
+  if (files.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col p-6">
+        <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/25 text-muted-foreground">
+          <FileSearch className="mb-3 h-10 w-10 opacity-50" />
+          <p className="text-base font-medium text-foreground">
+            No changes found for the selected comparison.
+          </p>
+          <p className="mt-1 text-sm">
+            Try another branch, diff mode, or repository.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   if (!file) {
     return (

@@ -59,7 +59,13 @@ interface AppState {
   summarizeAll: () => Promise<void>
   stageFile: (path: string) => Promise<void>
   unstageFile: (path: string) => Promise<void>
-  commitAndPush: (message: string) => Promise<{ commitOutput: string; pushOutput: string }>
+  commitAndPush: (message: string) => Promise<{
+    commitOutput: string
+    syncOutput: string
+    pushOutput: string
+    syncedWithRemote: boolean
+    pulledBeforePush: boolean
+  }>
   nextFile: () => void
   prevFile: () => void
 }
@@ -389,7 +395,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         reviewedFiles: new Set(),
         committingAndPushing: false,
       })
-      return { commitOutput: result.commitOutput, pushOutput: result.pushOutput }
+      return {
+        commitOutput: result.commitOutput,
+        syncOutput: result.syncOutput,
+        pushOutput: result.pushOutput,
+        syncedWithRemote: result.syncedWithRemote,
+        pulledBeforePush: result.pulledBeforePush,
+      }
     } catch (err) {
       set({ committingAndPushing: false })
       throw err

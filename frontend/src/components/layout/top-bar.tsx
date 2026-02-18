@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/app-store";
+import * as api from "@/lib/api";
+import { toast } from "sonner";
 
 export function TopBar() {
   const baseRef = useAppStore((s) => s.baseRef);
@@ -61,15 +63,15 @@ export function TopBar() {
   };
 
   const handleAddRepo = async () => {
-    const path = window.prompt(
-      "Enter absolute or relative path to a git repository:",
-    );
-    if (!path) return;
-
     try {
+      const { path } = await api.pickRepoDirectory();
+      if (!path) return;
       await addRepo(path);
+      toast.success("Repository added", {
+        description: path,
+      });
     } catch (err) {
-      window.alert(
+      toast.error(
         err instanceof Error ? err.message : "Failed to add repository",
       );
     }
@@ -79,8 +81,12 @@ export function TopBar() {
     if (!repoId || repoId === currentRepoId) return;
     try {
       await selectRepo(repoId);
+      const repoName = repos.find((repo) => repo.id === repoId)?.name ?? "Repository switched";
+      toast.success("Repository switched", {
+        description: repoName,
+      });
     } catch (err) {
-      window.alert(
+      toast.error(
         err instanceof Error ? err.message : "Failed to switch repository",
       );
     }
@@ -88,22 +94,35 @@ export function TopBar() {
 
   const handleCommitAndPush = async () => {
     if (!commitMessage.trim()) {
-      window.alert("Enter a commit message first.");
+      toast.error("Enter a commit message first.");
       return;
     }
+
+    const toastId = toast.loading("Committing, syncing with remote, and pushing...");
 
     try {
       const result = await commitAndPush(commitMessage.trim());
       setCommitMessage("");
-      const output = [result.commitOutput, result.pushOutput]
+
+      let syncMessage = "Pushed to remote.";
+      if (result.pulledBeforePush) {
+        syncMessage = "Pulled outstanding remote changes, then pushed.";
+      } else if (result.syncedWithRemote) {
+        syncMessage = "Synced with remote, then pushed.";
+      }
+
+      const output = [result.commitOutput, result.syncOutput, result.pushOutput]
         .filter(Boolean)
         .join("\n");
-      if (output) {
-        window.alert(output);
-      }
+      const preview = output.length > 180 ? `${output.slice(0, 180)}...` : output;
+      toast.success("Commit and push completed", {
+        id: toastId,
+        description: preview ? `${syncMessage} ${preview}` : syncMessage,
+      });
     } catch (err) {
-      window.alert(
+      toast.error(
         err instanceof Error ? err.message : "Failed to commit and push",
+        { id: toastId },
       );
     }
   };

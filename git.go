@@ -74,42 +74,87 @@ func ParseGitDiff(cfg *Config) (*DiffData, error) {
 
 // runGitDiff executes the appropriate git diff command and returns raw output.
 func runGitDiff(cfg *Config) (string, error) {
-	var args []string
+	if cfg.Unstaged {
+		return runUnstagedDiff(cfg)
+	}
 
+	var args []string
 	if cfg.Staged {
 		args = []string{"diff", "--staged"}
-	} else if cfg.Unstaged {
-		args = []string{"diff"}
 	} else {
 		args = []string{"diff", fmt.Sprintf("%s...%s", cfg.Base, cfg.Head)}
 	}
+	args = append(args, diffArgs()...)
 
-	// Add unified context and detect renames
-	args = append(args, "-U3", "--find-renames")
-	// Force a parseable diff regardless of user git config
-	args = append(args, "--no-color", "--no-ext-diff")
-
-	cmd := exec.Command("git", args...)
-	cmd.Dir = cfg.RepoPath
-
-	out, err := cmd.Output()
+	out, err := runGitCommand(cfg.RepoPath, args...)
 	if err != nil {
-		// git diff returns exit code 1 if there are differences, which is fine
+		return "", err
+	}
+
+	return out, nil
+}
+
+func runUnstagedDiff(cfg *Config) (string, error) {
+	trackedOut, err := runGitCommand(cfg.RepoPath, append([]string{"diff"}, diffArgs()...)...)
+	if err != nil {
+		return "", err
+	}
+
+	untrackedOut, err := runGitCommand(cfg.RepoPath, "ls-files", "--others", "--exclude-standard")
+	if err != nil {
+		return "", fmt.Errorf("git ls-files failed: %w", err)
+	}
+
+	chunks := []string{}
+	if strings.TrimSpace(trackedOut) != "" {
+		chunks = append(chunks, strings.TrimRight(trackedOut, "\n"))
+	}
+
+	for _, relPath := range splitGitLines(untrackedOut) {
+		if relPath == "" {
+			continue
+		}
+
+		noIndexArgs := []string{"diff", "--no-index"}
+		noIndexArgs = append(noIndexArgs, diffArgs()...)
+		noIndexArgs = append(noIndexArgs, "/dev/null", relPath)
+
+		out, diffErr := runGitCommand(cfg.RepoPath, noIndexArgs...)
+		if diffErr != nil {
+			return "", diffErr
+		}
+		if strings.TrimSpace(out) != "" {
+			chunks = append(chunks, strings.TrimRight(out, "\n"))
+		}
+	}
+
+	if len(chunks) == 0 {
+		return "", nil
+	}
+
+	return strings.Join(chunks, "\n") + "\n", nil
+}
+
+func diffArgs() []string {
+	// Add unified context and detect renames.
+	// Force a parseable diff regardless of user git config.
+	return []string{"-U3", "--find-renames", "--no-color", "--no-ext-diff"}
+}
+
+func runGitCommand(repoPath string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// git diff returns exit code 1 when differences are found.
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
 			return string(out), nil
 		}
-		return "", fmt.Errorf("git diff failed: %w\nstderr: %s", err, string(exitErr(err)))
+		return "", fmt.Errorf("git %s failed: %w\nstderr: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 
 	return string(out), nil
-}
-
-// exitErr extracts stderr from an exec error.
-func exitErr(err error) []byte {
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.Stderr
-	}
-	return []byte("unknown error")
 }
 
 // parseDiffOutput splits raw git diff output into structured DiffFile and DiffHunk objects.

@@ -29,9 +29,10 @@ export function FileList() {
   }, [files, searchQuery])
 
   if (filtered.length === 0) {
+    const isSearching = searchQuery.trim().length > 0
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-        <p className="text-sm">No files match</p>
+        <p className="text-sm">{isSearching ? "No files match" : "No changed files"}</p>
       </div>
     )
   }

@@ -96,6 +96,10 @@ export interface ReposResponse {
   currentRepoId: string
 }
 
+export interface RepoPickerResponse {
+  path: string
+}
+
 export interface AddRepoRequest {
   path: string
   name?: string
@@ -123,7 +127,10 @@ export interface CommitPushRequest {
 export interface CommitPushResponse {
   ok: boolean
   commitOutput: string
+  syncOutput: string
   pushOutput: string
+  syncedWithRemote: boolean
+  pulledBeforePush: boolean
   gitStatus: GitStatus
   diff: DiffResponse
 }

@@ -159,6 +159,28 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		})
 	})
 
+	// API: open a native folder picker and return selected path.
+	mux.HandleFunc("/api/repos/pick", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		path, err := pickFolderPath()
+		if err != nil {
+			if err == errFolderPickerCanceled {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]string{"path": ""})
+				return
+			}
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"path": path})
+	})
+
 	// API: switch active repository
 	mux.HandleFunc("/api/repos/select", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -576,6 +598,18 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			return
 		}
 
+		syncResult, err := SyncWithRemote(repo.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		status, err = GetGitStatus(repo.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
 		pushOut, err := Push(repo.Path, status)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -591,11 +625,14 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":           true,
-			"commitOutput": strings.TrimSpace(commitOut),
-			"pushOutput":   strings.TrimSpace(pushOut),
-			"gitStatus":    newStatus,
-			"diff":         buildDiffResponse(holder.Get()),
+			"ok":               true,
+			"commitOutput":     strings.TrimSpace(commitOut),
+			"syncOutput":       strings.TrimSpace(syncResult.Output),
+			"pushOutput":       strings.TrimSpace(pushOut),
+			"syncedWithRemote": syncResult.Fetched,
+			"pulledBeforePush": syncResult.Pulled,
+			"gitStatus":        newStatus,
+			"diff":             buildDiffResponse(holder.Get()),
 		})
 	})
 }

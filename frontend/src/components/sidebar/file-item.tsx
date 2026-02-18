@@ -1,15 +1,16 @@
-import type { MouseEvent } from "react"
-import { Badge } from "@/components/ui/badge"
+import type { MouseEvent } from "react";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { useAppStore } from "@/stores/app-store"
-import type { DiffFile } from "@/types/api"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Loader2 } from "lucide-react"
+} from "@/components/ui/tooltip";
+import { useAppStore } from "@/stores/app-store";
+import type { DiffFile } from "@/types/api";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const statusColors: Record<string, string> = {
   added: "bg-[#23863620] text-[#3fb950] border-[#23863640]",
@@ -17,59 +18,66 @@ const statusColors: Record<string, string> = {
   deleted: "bg-[#f8514920] text-[#f85149] border-[#f8514940]",
   renamed: "bg-[#bc8cff15] text-[#bc8cff] border-[#bc8cff30]",
   binary: "bg-[#8b949e20] text-[#8b949e] border-[#8b949e40]",
-}
+};
 
 function riskClass(score: number) {
-  if (score >= 50)
-    return "bg-[#f8514930] text-[#f85149] border-[#f8514940]"
-  if (score >= 20)
-    return "bg-[#d2992230] text-[#d29922] border-[#d2992240]"
-  return "bg-[#3fb95020] text-[#3fb950] border-[#3fb95030]"
+  if (score >= 50) return "bg-[#f8514930] text-[#f85149] border-[#f8514940]";
+  if (score >= 20) return "bg-[#d2992230] text-[#d29922] border-[#d2992240]";
+  return "bg-[#3fb95020] text-[#3fb950] border-[#3fb95030]";
+}
+
+function riskLevel(score: number) {
+  if (score >= 50) return "High";
+  if (score >= 20) return "Medium";
+  return "Low";
 }
 
 interface FileItemProps {
-  file: DiffFile
-  index: number
+  file: DiffFile;
+  index: number;
 }
 
 export function FileItem({ file, index }: FileItemProps) {
-  const activeFileIndex = useAppStore((s) => s.activeFileIndex)
-  const reviewedFiles = useAppStore((s) => s.reviewedFiles)
-  const selectFile = useAppStore((s) => s.selectFile)
-  const gitStatus = useAppStore((s) => s.gitStatus)
-  const diffMode = useAppStore((s) => s.diffMode)
-  const stageFile = useAppStore((s) => s.stageFile)
-  const unstageFile = useAppStore((s) => s.unstageFile)
-  const stagingPath = useAppStore((s) => s.stagingPath)
+  const activeFileIndex = useAppStore((s) => s.activeFileIndex);
+  const reviewedFiles = useAppStore((s) => s.reviewedFiles);
+  const selectFile = useAppStore((s) => s.selectFile);
+  const gitStatus = useAppStore((s) => s.gitStatus);
+  const diffMode = useAppStore((s) => s.diffMode);
+  const stageFile = useAppStore((s) => s.stageFile);
+  const unstageFile = useAppStore((s) => s.unstageFile);
+  const stagingPath = useAppStore((s) => s.stagingPath);
 
-  const isActive = index === activeFileIndex
-  const isReviewed = reviewedFiles.has(index)
-  const isStaged = gitStatus.stagedFiles.includes(file.path)
-  const isUnstaged = gitStatus.unstagedFiles.includes(file.path)
-  const canStage = diffMode === "unstaged" || isUnstaged
-  const canUnstage = (diffMode === "staged" || isStaged) && !canStage
-  const isMutating = stagingPath === file.path
+  const isActive = index === activeFileIndex;
+  const isReviewed = reviewedFiles.has(index);
+  const isStaged = gitStatus.stagedFiles.includes(file.path);
+  const isUnstaged = gitStatus.unstagedFiles.includes(file.path);
+  const canStage = diffMode === "unstaged" || isUnstaged;
+  const canUnstage = (diffMode === "staged" || isStaged) && !canStage;
+  const isMutating = stagingPath === file.path;
+  const level = riskLevel(file.riskScore);
 
   const handleStage = async (event: MouseEvent) => {
-    event.stopPropagation()
+    event.stopPropagation();
     try {
-      await stageFile(file.path)
+      await stageFile(file.path);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to stage file")
+      toast.error(err instanceof Error ? err.message : "Failed to stage file");
     }
-  }
+  };
 
   const handleUnstage = async (event: MouseEvent) => {
-    event.stopPropagation()
+    event.stopPropagation();
     try {
-      await unstageFile(file.path)
+      await unstageFile(file.path);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to unstage file")
+      toast.error(
+        err instanceof Error ? err.message : "Failed to unstage file",
+      );
     }
-  }
+  };
 
-  const lastSlash = file.path.lastIndexOf("/")
-  const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
+  const lastSlash = file.path.lastIndexOf("/");
+  const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path;
 
   return (
     <Tooltip>
@@ -77,9 +85,9 @@ export function FileItem({ file, index }: FileItemProps) {
         <button
           onClick={() => selectFile(index)}
           className={cn(
-            "flex w-full min-w-0 overflow-hidden flex-col gap-1 rounded-lg border-l-[3px] border-l-transparent px-3 py-2.5 text-left transition-colors",
+            "flex w-full min-w-0 overflow-hidden flex-col gap-1 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
             "hover:bg-accent/60",
-            isActive && "border-l-primary bg-secondary",
+            isActive && "border-primary bg-secondary",
             isReviewed && "opacity-50",
           )}
         >
@@ -104,7 +112,11 @@ export function FileItem({ file, index }: FileItemProps) {
                 disabled={isMutating}
                 className="h-5 px-1.5 text-[10px]"
               >
-                {isMutating ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Stage"}
+                {isMutating ? (
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  "Stage"
+                )}
               </Button>
             )}
             {canUnstage && (
@@ -115,7 +127,11 @@ export function FileItem({ file, index }: FileItemProps) {
                 disabled={isMutating}
                 className="h-5 px-1.5 text-[10px]"
               >
-                {isMutating ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Unstage"}
+                {isMutating ? (
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  "Unstage"
+                )}
               </Button>
             )}
             <Badge
@@ -125,7 +141,7 @@ export function FileItem({ file, index }: FileItemProps) {
                 riskClass(file.riskScore),
               )}
             >
-              {file.riskScore}
+              {level}
             </Badge>
           </div>
           <div className="flex min-w-0 items-center gap-2.5 pl-0.5">
@@ -151,5 +167,5 @@ export function FileItem({ file, index }: FileItemProps) {
         <p className="font-mono text-xs">{file.path}</p>
       </TooltipContent>
     </Tooltip>
-  )
+  );
 }

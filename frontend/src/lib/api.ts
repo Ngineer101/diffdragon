@@ -7,6 +7,7 @@ import type {
   FilePathRequest,
   GitStatus,
   ReloadDiffRequest,
+  RepoPickerResponse,
   ReposResponse,
   SelectRepoRequest,
 } from "@/types/api"
@@ -57,6 +58,12 @@ export async function fetchBranches(): Promise<BranchesResponse> {
 export async function fetchRepos(): Promise<ReposResponse> {
   const resp = await fetch("/api/repos")
   if (!resp.ok) throw new Error(await readError(resp, `Failed to fetch repositories: ${resp.statusText}`))
+  return resp.json()
+}
+
+export async function pickRepoDirectory(): Promise<RepoPickerResponse> {
+  const resp = await fetch("/api/repos/pick")
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to open folder picker: ${resp.statusText}`))
   return resp.json()
 }
 

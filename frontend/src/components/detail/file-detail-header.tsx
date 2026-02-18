@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  TriangleAlert,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +17,7 @@ import {
 import { useAppStore } from "@/stores/app-store"
 import type { DiffFile } from "@/types/api"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 const statusColors: Record<string, string> = {
   added: "bg-[#23863620] text-[#3fb950] border-[#23863640]",
@@ -27,10 +29,16 @@ const statusColors: Record<string, string> = {
 
 function riskBadgeClass(score: number) {
   if (score >= 50)
-    return "bg-[#f8514930] text-[#f85149] border-[#f8514940]"
+    return "bg-[#f8514940] text-[#ff7b72] border-[#f85149]"
   if (score >= 20)
-    return "bg-[#d2992230] text-[#d29922] border-[#d2992240]"
+    return "bg-[#d2992240] text-[#e3b341] border-[#d29922]"
   return "bg-[#3fb95020] text-[#3fb950] border-[#3fb95030]"
+}
+
+function riskLevel(score: number) {
+  if (score >= 50) return "High"
+  if (score >= 20) return "Medium"
+  return "Low"
 }
 
 interface FileDetailHeaderProps {
@@ -65,12 +73,13 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const canStage = diffMode === "unstaged" || isUnstaged
   const canUnstage = (diffMode === "staged" || isStaged) && !canStage
   const isMutating = stagingPath === file.path
+  const level = riskLevel(file.riskScore)
 
   const handleStage = async () => {
     try {
       await stageFile(file.path)
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to stage file")
+      toast.error(err instanceof Error ? err.message : "Failed to stage file")
     }
   }
 
@@ -78,7 +87,7 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
     try {
       await unstageFile(file.path)
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to unstage file")
+      toast.error(err instanceof Error ? err.message : "Failed to unstage file")
     }
   }
 
@@ -102,28 +111,34 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
             <Badge
               variant="outline"
               className={cn(
-                "ml-auto shrink-0 px-2.5 py-0.5 text-xs font-semibold",
+                "ml-auto shrink-0 px-3 py-1 text-sm font-bold tracking-wide",
                 riskBadgeClass(file.riskScore),
               )}
             >
-              Risk: {file.riskScore}
+              {level} Risk
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
             <p className="text-xs">
-              Heuristic risk score (0-100) based on file path and diff content
+              Heuristic risk level based on file path and diff content
             </p>
           </TooltipContent>
         </Tooltip>
       </div>
 
       {file.riskReasons?.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
+        <div className={cn("mb-3 rounded-md border px-3 py-2", riskBadgeClass(file.riskScore))}>
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <TriangleAlert className="h-4 w-4" />
+            Why this file is marked {level.toLowerCase()} risk
+          </div>
+          <div className="flex flex-wrap gap-2">
           {file.riskReasons.map((reason) => (
-            <Badge key={reason} variant="secondary" className="text-[11px]">
+            <Badge key={reason} variant="secondary" className="text-xs font-medium">
               {reason}
             </Badge>
           ))}
+          </div>
         </div>
       )}
 
