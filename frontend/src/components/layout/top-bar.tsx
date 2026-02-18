@@ -13,10 +13,19 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxInput,
+} from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/app-store";
 import * as api from "@/lib/api";
 import { toast } from "sonner";
+import type { Branch, Repo } from "@/types/api";
 
 export function TopBar() {
   const baseRef = useAppStore((s) => s.baseRef);
@@ -139,18 +148,12 @@ export function TopBar() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <select
+          <RepoSelect
+            repos={repos}
             value={currentRepoId}
-            onChange={(e) => handleRepoChange(e.target.value)}
-            className="h-7 w-[180px] rounded-md border border-border bg-background px-2 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {!currentRepoId && <option value="">Select repository</option>}
-            {repos.map((repo) => (
-              <option key={repo.id} value={repo.id}>
-                {repo.name}
-              </option>
-            ))}
-          </select>
+            onChange={handleRepoChange}
+            disabled={reloading}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -358,39 +361,95 @@ function BranchSelect({
 }: {
   value: string;
   onChange: (value: string) => void;
-  localBranches: { name: string; isRemote: boolean }[];
-  remoteBranches: { name: string; isRemote: boolean }[];
+  localBranches: Branch[];
+  remoteBranches: Branch[];
   disabled?: boolean;
 }) {
+  const branches = [...localBranches, ...remoteBranches];
+  const branchNames = branches.map((branch) => branch.name);
+  const containsValue = branchNames.includes(value);
+  const remoteBranchNames = new Set(remoteBranches.map((branch) => branch.name));
+  const allItems = containsValue || !value
+    ? branchNames
+    : [value, ...branchNames];
+
   return (
-    <select
+    <Combobox
+      items={allItems}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onValueChange={(branchName) => {
+        if (branchName && branchName !== value) {
+          onChange(branchName);
+        }
+      }}
       disabled={disabled}
-      className="h-7 w-[120px] rounded-md border border-border bg-background px-2 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
     >
-      {/* Current value as fallback if not in list */}
-      {![...localBranches, ...remoteBranches].some((b) => b.name === value) && (
-        <option value={value}>{value}</option>
-      )}
-      {localBranches.length > 0 && (
-        <optgroup label="Local">
-          {localBranches.map((b) => (
-            <option key={b.name} value={b.name}>
-              {b.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {remoteBranches.length > 0 && (
-        <optgroup label="Remote">
-          {remoteBranches.map((b) => (
-            <option key={b.name} value={b.name}>
-              {b.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
+      <ComboboxInput
+        placeholder="Select branch"
+        className="h-7 w-[170px] [&_[data-slot=input-group-control]]:h-7 [&_[data-slot=input-group-control]]:px-2 [&_[data-slot=input-group-control]]:font-mono [&_[data-slot=input-group-control]]:text-xs"
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No branches found.</ComboboxEmpty>
+        <ComboboxList>
+          {(branchName) => (
+            <ComboboxItem
+              key={branchName}
+              value={branchName}
+              className="justify-between font-mono text-xs"
+            >
+              <span>{branchName}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {remoteBranchNames.has(branchName) ? "remote" : "local"}
+              </span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
+function RepoSelect({
+  repos,
+  value,
+  onChange,
+  disabled,
+}: {
+  repos: Repo[];
+  value: string;
+  onChange: (repoId: string) => void;
+  disabled?: boolean;
+}) {
+  const repoById = new Map(repos.map((repo) => [repo.id, repo]));
+  const repoIds = repos.map((repo) => repo.id);
+  const allItems = value && !repoById.has(value) ? [value, ...repoIds] : repoIds;
+
+  return (
+    <Combobox
+      items={allItems}
+      itemToStringValue={(repoId) => repoById.get(repoId)?.name ?? repoId}
+      value={value}
+      onValueChange={(repoId) => {
+        if (repoId && repoId !== value) {
+          onChange(repoId);
+        }
+      }}
+      disabled={disabled}
+    >
+      <ComboboxInput
+        placeholder="Select repository"
+        className="h-7 w-[220px] [&_[data-slot=input-group-control]]:h-7 [&_[data-slot=input-group-control]]:px-2 [&_[data-slot=input-group-control]]:font-mono [&_[data-slot=input-group-control]]:text-xs"
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No repositories found.</ComboboxEmpty>
+        <ComboboxList>
+          {(repoId) => (
+            <ComboboxItem key={repoId} value={repoId} className="font-mono text-xs">
+              {repoById.get(repoId)?.name ?? repoId}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }
