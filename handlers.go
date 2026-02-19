@@ -235,6 +235,72 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		})
 	})
 
+	// API: open a GitHub PR into a worktree.
+	mux.HandleFunc("/api/github/pr/open", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			PR string `json:"pr"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		if strings.TrimSpace(req.PR) == "" {
+			http.Error(w, "PR is required", 400)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		result, err := OpenGitHubPR(repo.Path, strings.TrimSpace(req.PR))
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	})
+
+	// API: close a GitHub PR worktree.
+	mux.HandleFunc("/api/github/pr/close", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			WorktreePath string `json:"worktreePath"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		if err := CloseGitHubPR(repo.Path, req.WorktreePath); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+
 	// API: reload diff with new refs
 	mux.HandleFunc("/api/diff/reload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {

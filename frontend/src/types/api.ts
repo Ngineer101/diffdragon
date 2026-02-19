@@ -135,6 +135,22 @@ export interface CommitPushResponse {
   diff: DiffResponse
 }
 
+export interface GitHubPROpenRequest {
+  pr: string
+}
+
+export interface GitHubPROpenResponse {
+  worktreePath: string
+  prNumber: number
+  baseOid: string
+  headOid: string
+  mergeBaseOid: string
+}
+
+export interface GitHubPRCloseRequest {
+  worktreePath: string
+}
+
 export type DiffStyle = "unified" | "split"
 
 export type DiffMode = "branches" | "staged" | "unstaged"

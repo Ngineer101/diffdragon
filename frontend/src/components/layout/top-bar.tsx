@@ -11,6 +11,8 @@ import {
   FileDiff,
   GitCommitHorizontal,
   Upload,
+  GitPullRequest,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +52,13 @@ export function TopBar() {
   const gitStatus = useAppStore((s) => s.gitStatus);
   const commitAndPush = useAppStore((s) => s.commitAndPush);
   const committingAndPushing = useAppStore((s) => s.committingAndPushing);
+  const prWorktreePath = useAppStore((s) => s.prWorktreePath);
+  const openGithubPr = useAppStore((s) => s.openGithubPr);
+  const closeGithubPr = useAppStore((s) => s.closeGithubPr);
   const [commitMessage, setCommitMessage] = useState("");
+  const [prInput, setPrInput] = useState("");
+  const [openingPR, setOpeningPR] = useState(false);
+  const [closingPR, setClosingPR] = useState(false);
 
   useEffect(() => {
     fetchBranches();
@@ -133,6 +141,49 @@ export function TopBar() {
         err instanceof Error ? err.message : "Failed to commit and push",
         { id: toastId },
       );
+    }
+  };
+
+  const handleOpenPR = async () => {
+    const value = prInput.trim();
+    if (!value) {
+      toast.error("Enter a PR number, URL, or selector.");
+      return;
+    }
+
+    const toastId = toast.loading("Opening GitHub PR...");
+    setOpeningPR(true);
+    try {
+      const result = await openGithubPr(value);
+      setPrInput("");
+      toast.success("PR opened", {
+        id: toastId,
+        description: `PR #${result.prNumber} ready at ${result.worktreePath}`,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to open GitHub PR",
+        { id: toastId },
+      );
+    } finally {
+      setOpeningPR(false);
+    }
+  };
+
+  const handleClosePR = async () => {
+    if (!prWorktreePath) return;
+    const toastId = toast.loading("Closing GitHub PR...");
+    setClosingPR(true);
+    try {
+      await closeGithubPr();
+      toast.success("PR closed", { id: toastId });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to close GitHub PR",
+        { id: toastId },
+      );
+    } finally {
+      setClosingPR(false);
     }
   };
 
@@ -241,6 +292,49 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex w-full items-center justify-end gap-1.5 sm:w-auto">
+        {hasRepo && (
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={prInput}
+              onChange={(e) => setPrInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleOpenPR();
+                }
+              }}
+              placeholder="Open GitHub PR"
+              className="h-8 w-[180px] font-mono text-xs"
+            />
+            <Button
+              size="sm"
+              onClick={handleOpenPR}
+              disabled={openingPR || reloading || !hasRepo}
+            >
+              {openingPR ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <GitPullRequest className="h-4 w-4" />
+              )}
+              {openingPR ? "Opening..." : "Open PR"}
+            </Button>
+            {prWorktreePath && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleClosePR}
+                disabled={closingPR}
+              >
+                {closingPR ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <X className="h-4 w-4" />
+                )}
+                {closingPR ? "Closing..." : "Close PR"}
+              </Button>
+            )}
+          </div>
+        )}
         {hasRepo && (
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">

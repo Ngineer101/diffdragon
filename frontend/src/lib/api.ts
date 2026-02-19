@@ -5,6 +5,9 @@ import type {
   CommitPushResponse,
   DiffResponse,
   FilePathRequest,
+  GitHubPRCloseRequest,
+  GitHubPROpenRequest,
+  GitHubPROpenResponse,
   GitStatus,
   ReloadDiffRequest,
   RepoPickerResponse,
@@ -139,5 +142,25 @@ export async function commitAndPush(payload: CommitPushRequest): Promise<CommitP
     body: JSON.stringify(payload),
   })
   if (!resp.ok) throw new Error(await readError(resp, `Failed to commit and push: ${resp.statusText}`))
+  return resp.json()
+}
+
+export async function openGithubPr(payload: GitHubPROpenRequest): Promise<GitHubPROpenResponse> {
+  const resp = await fetch("/api/github/pr/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to open PR: ${resp.statusText}`))
+  return resp.json()
+}
+
+export async function closeGithubPr(payload: GitHubPRCloseRequest): Promise<{ ok: boolean }> {
+  const resp = await fetch("/api/github/pr/close", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to close PR: ${resp.statusText}`))
   return resp.json()
 }

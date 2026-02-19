@@ -21,6 +21,8 @@ interface AppState {
   // Repository state
   repos: Repo[]
   currentRepoId: string
+  prWorktreePath: string | null
+  prBaseRepoId: string
 
   // UI state
   activeFileIndex: number
@@ -66,6 +68,14 @@ interface AppState {
     syncedWithRemote: boolean
     pulledBeforePush: boolean
   }>
+  openGithubPr: (pr: string) => Promise<{
+    worktreePath: string
+    prNumber: number
+    baseOid: string
+    headOid: string
+    mergeBaseOid: string
+  }>
+  closeGithubPr: () => Promise<void>
   nextFile: () => void
   prevFile: () => void
 }
@@ -93,6 +103,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   diffMode: "branches",
   repos: [],
   currentRepoId: "",
+  prWorktreePath: null,
+  prBaseRepoId: "",
   activeFileIndex: -1,
   viewMode: "risk",
   diffStyle: "unified",
@@ -406,6 +418,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ committingAndPushing: false })
       throw err
     }
+  },
+
+  openGithubPr: async (pr) => {
+    const existingWorktree = get().prWorktreePath
+    if (existingWorktree) {
+      await get().closeGithubPr()
+    }
+
+    const baseRepoId = get().currentRepoId
+    const result = await api.openGithubPr({ pr })
+    await get().addRepo(result.worktreePath)
+    set({ prWorktreePath: result.worktreePath, prBaseRepoId: baseRepoId })
+    return result
+  },
+
+  closeGithubPr: async () => {
+    const worktreePath = get().prWorktreePath
+    if (!worktreePath) return
+
+    const baseRepoId = get().prBaseRepoId
+    if (baseRepoId) {
+      try {
+        await get().selectRepo(baseRepoId)
+      } catch {
+        // Ignore and still attempt cleanup
+      }
+    }
+
+    await api.closeGithubPr({ worktreePath })
+    set({ prWorktreePath: null, prBaseRepoId: "" })
   },
 
   nextFile: () => {
