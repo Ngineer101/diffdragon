@@ -91,7 +91,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		if err != nil {
 			return err
 		}
-		AnalyzeDiff(diffData)
+		AnalyzeDiff(diffData, ai)
 		holder.Replace(diffData)
 		return nil
 	}
@@ -344,7 +344,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
 			return
 		}
-		AnalyzeDiff(diffData)
+		AnalyzeDiff(diffData, ai)
 		holder.Replace(diffData)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -608,6 +608,45 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		}
 
 		if err := UnstageFile(repo.Path, req.Path); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to reload diff: %v", err), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(holder.Get()))
+	})
+
+	// API: discard all staged/unstaged changes for a file path.
+	mux.HandleFunc("/api/git/discard", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+		if strings.TrimSpace(req.Path) == "" {
+			http.Error(w, "Path is required", 400)
+			return
+		}
+
+		if err := DiscardFileChanges(repo.Path, req.Path); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}

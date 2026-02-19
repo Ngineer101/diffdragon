@@ -39,6 +39,7 @@ interface AppState {
   generatingChecklist: number | null
   summarizingAll: boolean
   stagingPath: string | null
+  discardingPath: string | null
   committingAndPushing: boolean
 
   // Actions
@@ -61,6 +62,7 @@ interface AppState {
   summarizeAll: () => Promise<void>
   stageFile: (path: string) => Promise<void>
   unstageFile: (path: string) => Promise<void>
+  discardFile: (path: string) => Promise<void>
   commitAndPush: (message: string) => Promise<{
     commitOutput: string
     syncOutput: string
@@ -117,6 +119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   generatingChecklist: null,
   summarizingAll: false,
   stagingPath: null,
+  discardingPath: null,
   committingAndPushing: false,
 
   fetchDiff: async () => {
@@ -384,6 +387,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (err) {
       set({ stagingPath: null })
+      throw err
+    }
+  },
+
+  discardFile: async (path) => {
+    set({ discardingPath: path })
+    try {
+      const data = await api.discardFile({ path })
+      set({
+        data,
+        files: data.files,
+        stats: data.stats,
+        baseRef: data.baseRef,
+        headRef: data.headRef,
+        aiProvider: data.aiProvider,
+        gitStatus: data.gitStatus,
+        repos: data.repos,
+        currentRepoId: data.currentRepoId,
+        discardingPath: null,
+      })
+    } catch (err) {
+      set({ discardingPath: null })
       throw err
     }
   },

@@ -9,7 +9,7 @@ import { useAppStore } from "@/stores/app-store";
 import type { DiffFile } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 const statusColors: Record<string, string> = {
@@ -46,6 +46,8 @@ export function FileItem({ file, index }: FileItemProps) {
   const stageFile = useAppStore((s) => s.stageFile);
   const unstageFile = useAppStore((s) => s.unstageFile);
   const stagingPath = useAppStore((s) => s.stagingPath);
+  const discardFile = useAppStore((s) => s.discardFile);
+  const discardingPath = useAppStore((s) => s.discardingPath);
 
   const isActive = index === activeFileIndex;
   const isReviewed = reviewedFiles.has(index);
@@ -53,7 +55,7 @@ export function FileItem({ file, index }: FileItemProps) {
   const isUnstaged = gitStatus.unstagedFiles.includes(file.path);
   const canStage = diffMode === "unstaged" || isUnstaged;
   const canUnstage = (diffMode === "staged" || isStaged) && !canStage;
-  const isMutating = stagingPath === file.path;
+  const isMutating = stagingPath === file.path || discardingPath === file.path;
   const level = riskLevel(file.riskScore);
 
   const handleStage = async (event: MouseEvent) => {
@@ -72,6 +74,23 @@ export function FileItem({ file, index }: FileItemProps) {
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to unstage file",
+      );
+    }
+  };
+
+  const handleDiscard = async (event: MouseEvent) => {
+    event.stopPropagation();
+    const confirmed = window.confirm(
+      `Discard all staged and unstaged changes for ${file.path}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await discardFile(file.path);
+      toast.success("Changes discarded", { description: file.path });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to discard changes",
       );
     }
   };
@@ -134,6 +153,20 @@ export function FileItem({ file, index }: FileItemProps) {
                 )}
               </Button>
             )}
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={handleDiscard}
+              disabled={isMutating}
+              className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
+              title="Discard file changes"
+            >
+              {isMutating ? (
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              ) : (
+                <Undo2 className="h-2.5 w-2.5" />
+              )}
+            </Button>
             <Badge
               variant="outline"
               className={cn(

@@ -12,11 +12,21 @@ import (
 
 // AIClient provides an interface for generating summaries and checklists.
 type AIClient struct {
-	provider    string // "claude", "ollama", "none"
-	apiKey      string
-	ollamaURL   string
-	ollamaModel string
-	httpClient  *http.Client
+	provider       string // "claude", "ollama", "none"
+	apiKey         string
+	ollamaURL      string
+	ollamaModel    string
+	lmstudioURL    string
+	lmstudioModel  string
+	lmstudioAPIKey string
+	httpClient     *http.Client
+}
+
+type AIRiskAssessment struct {
+	RiskScore     int      `json:"riskScore"`
+	Reasons       []string `json:"reasons"`
+	SemanticGroup string   `json:"semanticGroup"`
+	Confidence    string   `json:"confidence"`
 }
 
 // NewAIClient creates an AIClient based on the configuration.
@@ -26,14 +36,68 @@ func NewAIClient(cfg *Config) *AIClient {
 	}
 
 	return &AIClient{
-		provider:    cfg.AIProvider,
-		apiKey:      cfg.AnthropicKey,
-		ollamaURL:   cfg.OllamaURL,
-		ollamaModel: cfg.OllamaModel,
+		provider:       cfg.AIProvider,
+		apiKey:         cfg.AnthropicKey,
+		ollamaURL:      cfg.OllamaURL,
+		ollamaModel:    cfg.OllamaModel,
+		lmstudioURL:    cfg.LMStudioURL,
+		lmstudioModel:  cfg.LMStudioModel,
+		lmstudioAPIKey: cfg.LMStudioAPIKey,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
 	}
+}
+
+// AssessRisk generates an AI risk assessment for a file diff.
+func (ai *AIClient) AssessRisk(file *DiffFile) (*AIRiskAssessment, error) {
+	if ai == nil {
+		return nil, fmt.Errorf("no AI provider configured")
+	}
+
+	prompt := fmt.Sprintf(`You are a staff engineer performing risk triage for a git diff.
+
+Return ONLY valid JSON with this exact shape:
+{"riskScore": number, "reasons": [string], "semanticGroup": "feature|bugfix|refactor|test|config|docs|style", "confidence": "low|medium|high"}
+
+Rules:
+- riskScore is 0-100 where 0 is trivial and 100 is very risky.
+- reasons must be 2-5 short, concrete reasons tied to THIS diff.
+- semanticGroup must be one of the listed values.
+- confidence should reflect certainty in your assessment.
+- Do not include markdown code fences or extra text.
+
+File: %s
+Status: %s
+Language: %s
+Lines added: %d
+Lines removed: %d
+Current heuristic risk: %d
+Current heuristic reasons: %s
+Current heuristic semantic group: %s
+
+Diff:
+%s`, file.Path, file.Status, file.Language, file.LinesAdded, file.LinesRemoved, file.RiskScore, strings.Join(file.RiskReasons, ", "), file.SemanticGroup, truncate(file.RawDiff, 5000))
+
+	result, err := ai.complete(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	result = extractJSONObject(result)
+	var assessment AIRiskAssessment
+	if err := json.Unmarshal([]byte(result), &assessment); err != nil {
+		return nil, fmt.Errorf("failed to parse AI risk JSON: %w", err)
+	}
+
+	if assessment.RiskScore < 0 {
+		assessment.RiskScore = 0
+	}
+	if assessment.RiskScore > 100 {
+		assessment.RiskScore = 100
+	}
+
+	return &assessment, nil
 }
 
 // SummarizeFile generates a natural language summary for a file diff.
@@ -128,6 +192,8 @@ func (ai *AIClient) complete(prompt string) (string, error) {
 		return ai.completeClaude(prompt)
 	case "ollama":
 		return ai.completeOllama(prompt)
+	case "lmstudio":
+		return ai.completeLMStudio(prompt)
 	default:
 		return "", fmt.Errorf("unknown AI provider: %s", ai.provider)
 	}
@@ -230,6 +296,74 @@ func (ai *AIClient) completeOllama(prompt string) (string, error) {
 	return strings.TrimSpace(result.Response), nil
 }
 
+// completeLMStudio calls the OpenAI-compatible chat completions API exposed by LM Studio.
+func (ai *AIClient) completeLMStudio(prompt string) (string, error) {
+	baseURL := strings.TrimSuffix(ai.lmstudioURL, "/")
+	url := baseURL
+	if !strings.HasSuffix(url, "/chat/completions") {
+		if strings.HasSuffix(url, "/v1") {
+			url += "/chat/completions"
+		} else {
+			url += "/v1/chat/completions"
+		}
+	}
+
+	body := map[string]interface{}{
+		"model": ai.lmstudioModel,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"temperature": 0.2,
+		"max_tokens":  1024,
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(ai.lmstudioAPIKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(ai.lmstudioAPIKey))
+	}
+
+	resp, err := ai.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("LM Studio request failed (is LM Studio server running?): %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("LM Studio returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("failed to parse LM Studio response: %w", err)
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("empty response from LM Studio")
+	}
+
+	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
 // truncate limits a string to maxLen characters.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -251,6 +385,24 @@ func extractJSON(s string) string {
 	// Find the first [ and last ]
 	start := strings.Index(s, "[")
 	end := strings.LastIndex(s, "]")
+	if start >= 0 && end > start {
+		return s[start : end+1]
+	}
+
+	return s
+}
+
+// extractJSONObject finds the outermost JSON object in a response.
+func extractJSONObject(s string) string {
+	s = strings.TrimSpace(s)
+
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	s = strings.TrimSpace(s)
+
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
 	if start >= 0 && end > start {
 		return s[start : end+1]
 	}

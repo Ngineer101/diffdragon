@@ -135,6 +135,16 @@ export async function unstageFile(payload: FilePathRequest): Promise<DiffRespons
   return resp.json()
 }
 
+export async function discardFile(payload: FilePathRequest): Promise<DiffResponse> {
+  const resp = await fetch("/api/git/discard", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to discard file changes: ${resp.statusText}`))
+  return resp.json()
+}
+
 export async function commitAndPush(payload: CommitPushRequest): Promise<CommitPushResponse> {
   const resp = await fetch("/api/git/commit-push", {
     method: "POST",

@@ -17,18 +17,21 @@ var staticFiles embed.FS
 
 // Config holds all application configuration parsed from CLI flags and env vars.
 type Config struct {
-	RepoPath     string
-	Base         string
-	Head         string
-	Staged       bool
-	Unstaged     bool
-	Port         int
-	AIProvider   string // "none", "claude", "ollama"
-	OllamaModel  string
-	OllamaURL    string
-	AnthropicKey string
-	Dev          bool   // Dev mode: proxy static files to Vite dev server
-	ViteURL      string // Vite dev server URL (default http://localhost:5173)
+	RepoPath       string
+	Base           string
+	Head           string
+	Staged         bool
+	Unstaged       bool
+	Port           int
+	AIProvider     string // "none", "claude", "ollama", "lmstudio"
+	OllamaModel    string
+	OllamaURL      string
+	LMStudioModel  string
+	LMStudioURL    string
+	LMStudioAPIKey string
+	AnthropicKey   string
+	Dev            bool   // Dev mode: proxy static files to Vite dev server
+	ViteURL        string // Vite dev server URL (default http://localhost:5173)
 }
 
 func main() {
@@ -72,11 +75,26 @@ func main() {
 	if envURL := os.Getenv("OLLAMA_URL"); envURL != "" && cfg.OllamaURL == "http://localhost:11434" {
 		cfg.OllamaURL = envURL
 	}
+	if envURL := os.Getenv("LMSTUDIO_URL"); envURL != "" && cfg.LMStudioURL == "http://localhost:1234/v1" {
+		cfg.LMStudioURL = envURL
+	}
+	if envModel := os.Getenv("LMSTUDIO_MODEL"); envModel != "" && cfg.LMStudioModel == "local-model" {
+		cfg.LMStudioModel = envModel
+	}
+	if cfg.LMStudioAPIKey == "" {
+		cfg.LMStudioAPIKey = os.Getenv("LMSTUDIO_API_KEY")
+	}
 
 	// Warn if claude provider is selected but no key is set
 	if cfg.AIProvider == "claude" && cfg.AnthropicKey == "" {
 		log.Println("WARNING: --ai=claude selected but ANTHROPIC_API_KEY is not set. AI features will fail.")
 	}
+	if cfg.AIProvider == "lmstudio" && cfg.LMStudioModel == "" {
+		log.Println("WARNING: --ai=lmstudio selected but no model was configured. AI features may fail.")
+	}
+
+	// Create the AI client (may be nil if provider is "none")
+	aiClient := NewAIClient(cfg)
 
 	var diffData *DiffData
 	if cfg.RepoPath != "" {
@@ -90,11 +108,8 @@ func main() {
 			log.Fatalf("Failed to parse git diff: %v", err)
 		}
 		diffData = parsedDiff
-		AnalyzeDiff(diffData)
+		AnalyzeDiff(diffData, aiClient)
 	}
-
-	// Create the AI client (may be nil if provider is "none")
-	aiClient := NewAIClient(cfg)
 
 	// Wrap diff data in a mutex-protected holder for dynamic reloading
 	holder := NewDiffHolder(diffData)
@@ -141,9 +156,11 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Base, "base", "main", "Base ref to diff against")
 	flag.StringVar(&cfg.Head, "head", "HEAD", "Head ref to diff")
 	flag.IntVar(&cfg.Port, "port", 8384, "Port for the local web server")
-	flag.StringVar(&cfg.AIProvider, "ai", "none", "AI provider: none, claude, ollama")
+	flag.StringVar(&cfg.AIProvider, "ai", "none", "AI provider: none, claude, ollama, lmstudio")
 	flag.StringVar(&cfg.OllamaModel, "ollama-model", "llama3.1", "Ollama model name")
 	flag.StringVar(&cfg.OllamaURL, "ollama-url", "http://localhost:11434", "Ollama API endpoint")
+	flag.StringVar(&cfg.LMStudioModel, "lmstudio-model", "local-model", "LM Studio model name")
+	flag.StringVar(&cfg.LMStudioURL, "lmstudio-url", "http://localhost:1234/v1", "LM Studio OpenAI-compatible endpoint")
 	flag.BoolVar(&cfg.Dev, "dev", false, "Dev mode: proxy static files to Vite dev server for HMR")
 	flag.StringVar(&cfg.ViteURL, "vite-url", "http://localhost:5173", "Vite dev server URL (used with --dev)")
 

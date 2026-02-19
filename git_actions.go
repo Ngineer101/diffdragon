@@ -91,6 +91,17 @@ func UnstageFile(repoPath string, path string) error {
 	return fmt.Errorf("failed to unstage file %q", path)
 }
 
+func DiscardFileChanges(repoPath string, path string) error {
+	_, restoreErr := runGit(repoPath, "restore", "--source=HEAD", "--staged", "--worktree", "--", path)
+	_, cleanErr := runGit(repoPath, "clean", "-fd", "--", path)
+
+	if restoreErr != nil && cleanErr != nil {
+		return fmt.Errorf("failed to discard changes for %q: %v", path, restoreErr)
+	}
+
+	return nil
+}
+
 func Commit(repoPath string, message string) (string, error) {
 	out, err := runGit(repoPath, "commit", "-m", message)
 	if err != nil {
