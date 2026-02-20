@@ -5,6 +5,8 @@ import type {
   CommitPushResponse,
   DiffResponse,
   FilePathRequest,
+  GitAIFileNotesResponse,
+  GitAIPromptDetailResponse,
   GitHubPRCloseRequest,
   GitHubPROpenRequest,
   GitHubPROpenResponse,
@@ -172,5 +174,38 @@ export async function closeGithubPr(payload: GitHubPRCloseRequest): Promise<{ ok
     body: JSON.stringify(payload),
   })
   if (!resp.ok) throw new Error(await readError(resp, `Failed to close PR: ${resp.statusText}`))
+  return resp.json()
+}
+
+export async function fetchGitAIFileNotes(params: {
+  path: string
+  oldPath?: string
+  base: string
+  head: string
+}): Promise<GitAIFileNotesResponse> {
+  const search = new URLSearchParams({
+    path: params.path,
+    base: params.base,
+    head: params.head,
+  })
+  if (params.oldPath) {
+    search.set("oldPath", params.oldPath)
+  }
+
+  const resp = await fetch(`/api/git-ai/file-notes?${search.toString()}`)
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to fetch Git AI notes: ${resp.statusText}`))
+  return resp.json()
+}
+
+export async function fetchGitAIPromptDetail(params: {
+  promptId: string
+  commit: string
+}): Promise<GitAIPromptDetailResponse> {
+  const search = new URLSearchParams({
+    promptId: params.promptId,
+    commit: params.commit,
+  })
+  const resp = await fetch(`/api/git-ai/prompt?${search.toString()}`)
+  if (!resp.ok) throw new Error(await readError(resp, `Failed to fetch Git AI prompt details: ${resp.statusText}`))
   return resp.json()
 }

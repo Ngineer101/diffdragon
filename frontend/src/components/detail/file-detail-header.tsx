@@ -7,6 +7,8 @@ import {
   Loader2,
   TriangleAlert,
   Undo2,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -66,6 +68,8 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const stagingPath = useAppStore((s) => s.stagingPath)
   const discardFile = useAppStore((s) => s.discardFile)
   const discardingPath = useAppStore((s) => s.discardingPath)
+  const gitAINotesCollapsed = useAppStore((s) => s.gitAINotesCollapsed)
+  const toggleGitAINotesCollapsed = useAppStore((s) => s.toggleGitAINotesCollapsed)
 
   const isReviewed = reviewedFiles.has(index)
   const hasAI = aiProvider !== "none"
@@ -227,6 +231,15 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
         </Button>
 
         <div className="ml-auto flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleGitAINotesCollapsed}
+            className="hidden lg:inline-flex"
+          >
+            {gitAINotesCollapsed ? <PanelRightOpen className="h-3.5 w-3.5" /> : <PanelRightClose className="h-3.5 w-3.5" />}
+            {gitAINotesCollapsed ? "Show Notes" : "Hide Notes"}
+          </Button>
           <Button
             variant="outline"
             size="sm"

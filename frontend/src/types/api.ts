@@ -151,6 +151,46 @@ export interface GitHubPRCloseRequest {
   worktreePath: string
 }
 
+export interface GitAIFileNoteItem {
+  commit: string
+  promptId: string
+  lineRanges: string
+  tool: string
+  model: string
+  humanAuthor: string
+  messagesUrl: string
+  acceptedLines: number
+  overriddenLines: number
+  totalAdditions: number
+  totalDeletions: number
+}
+
+export interface GitAIFileNotesResponse {
+  items: GitAIFileNoteItem[]
+}
+
+export interface GitAIPromptDetailResponse {
+  commit: string
+  prompt_id: string
+  prompt: {
+    agent_id?: {
+      tool?: string
+      model?: string
+      id?: string
+    }
+    human_author?: string
+    messages?: Array<{
+      role?: string
+      content?: unknown
+    }>
+    total_additions?: number
+    total_deletions?: number
+    accepted_lines?: number
+    overriden_lines?: number
+    messages_url?: string
+  }
+}
+
 export type DiffStyle = "unified" | "split"
 
 export type DiffMode = "branches" | "staged" | "unstaged"

@@ -113,3 +113,8 @@
 .diff-line-context {
     color: #6e7681;
 }
+
+.git-ai-line-highlight {
+    background: rgba(88, 166, 255, 0.2) !important;
+    box-shadow: inset 3px 0 0 rgba(88, 166, 255, 0.9);
+}

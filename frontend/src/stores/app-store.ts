@@ -29,6 +29,7 @@ interface AppState {
   viewMode: ViewMode
   diffStyle: DiffStyle
   searchQuery: string
+  gitAINotesCollapsed: boolean
   collapsedGroups: Record<string, boolean>
   reviewedFiles: Set<number>
 
@@ -55,6 +56,7 @@ interface AppState {
   selectFile: (index: number) => void
   setViewMode: (mode: ViewMode) => void
   setSearchQuery: (query: string) => void
+  toggleGitAINotesCollapsed: () => void
   toggleGroup: (group: string) => void
   toggleReviewed: (index: number) => void
   summarizeFile: (index: number) => Promise<void>
@@ -111,6 +113,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   viewMode: "risk",
   diffStyle: "unified",
   searchQuery: "",
+  gitAINotesCollapsed: false,
   collapsedGroups: {},
   reviewedFiles: new Set(),
   loading: true,
@@ -281,6 +284,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
 
   setSearchQuery: (query) => set({ searchQuery: query }),
+
+  toggleGitAINotesCollapsed: () =>
+    set((state) => ({ gitAINotesCollapsed: !state.gitAINotesCollapsed })),
 
   toggleGroup: (group) =>
     set((state) => ({
