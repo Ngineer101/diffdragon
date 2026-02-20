@@ -20,13 +20,29 @@ export function FileList() {
   const files = useAppStore((s) => s.files)
   const viewMode = useAppStore((s) => s.viewMode)
   const searchQuery = useAppStore((s) => s.searchQuery)
+  const fileStageFilter = useAppStore((s) => s.fileStageFilter)
+  const gitStatus = useAppStore((s) => s.gitStatus)
 
   const filtered: FileWithIndex[] = useMemo(() => {
+    const stagedSet = new Set(gitStatus.stagedFiles)
+    const unstagedSet = new Set(gitStatus.unstagedFiles)
     const withIndex = files.map((f, i) => ({ ...f, _origIndex: i }))
-    if (!searchQuery) return withIndex
+
+    const stageFiltered = withIndex.filter((f) => {
+      if (fileStageFilter === "all") return true
+
+      const pathMatches =
+        fileStageFilter === "staged"
+          ? stagedSet.has(f.path) || (!!f.oldPath && stagedSet.has(f.oldPath))
+          : unstagedSet.has(f.path) || (!!f.oldPath && unstagedSet.has(f.oldPath))
+
+      return pathMatches
+    })
+
+    if (!searchQuery) return stageFiltered
     const q = searchQuery.toLowerCase()
-    return withIndex.filter((f) => f.path.toLowerCase().includes(q))
-  }, [files, searchQuery])
+    return stageFiltered.filter((f) => f.path.toLowerCase().includes(q))
+  }, [files, searchQuery, fileStageFilter, gitStatus.stagedFiles, gitStatus.unstagedFiles])
 
   if (filtered.length === 0) {
     const isSearching = searchQuery.trim().length > 0

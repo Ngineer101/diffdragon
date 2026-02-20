@@ -57,7 +57,10 @@ func ParseGitDiff(cfg *Config) (*DiffData, error) {
 		HeadRef: cfg.Head,
 	}
 
-	if cfg.Staged {
+	if cfg.Staged && cfg.Unstaged {
+		data.BaseRef = "HEAD"
+		data.HeadRef = "working tree"
+	} else if cfg.Staged {
 		data.BaseRef = "staged"
 		data.HeadRef = "index"
 	} else if cfg.Unstaged {
@@ -74,6 +77,10 @@ func ParseGitDiff(cfg *Config) (*DiffData, error) {
 
 // runGitDiff executes the appropriate git diff command and returns raw output.
 func runGitDiff(cfg *Config) (string, error) {
+	if cfg.Staged && cfg.Unstaged {
+		return runWorkingTreeDiff(cfg)
+	}
+
 	if cfg.Unstaged {
 		return runUnstagedDiff(cfg)
 	}
@@ -92,6 +99,47 @@ func runGitDiff(cfg *Config) (string, error) {
 	}
 
 	return out, nil
+}
+
+func runWorkingTreeDiff(cfg *Config) (string, error) {
+	trackedOut, err := runGitCommand(cfg.RepoPath, append([]string{"diff", "HEAD"}, diffArgs()...)...)
+	if err != nil {
+		return "", err
+	}
+
+	untrackedOut, err := runGitCommand(cfg.RepoPath, "ls-files", "--others", "--exclude-standard")
+	if err != nil {
+		return "", fmt.Errorf("git ls-files failed: %w", err)
+	}
+
+	chunks := []string{}
+	if strings.TrimSpace(trackedOut) != "" {
+		chunks = append(chunks, strings.TrimRight(trackedOut, "\n"))
+	}
+
+	for _, relPath := range splitGitLines(untrackedOut) {
+		if relPath == "" {
+			continue
+		}
+
+		noIndexArgs := []string{"diff", "--no-index"}
+		noIndexArgs = append(noIndexArgs, diffArgs()...)
+		noIndexArgs = append(noIndexArgs, "/dev/null", relPath)
+
+		out, diffErr := runGitCommand(cfg.RepoPath, noIndexArgs...)
+		if diffErr != nil {
+			return "", diffErr
+		}
+		if strings.TrimSpace(out) != "" {
+			chunks = append(chunks, strings.TrimRight(out, "\n"))
+		}
+	}
+
+	if len(chunks) == 0 {
+		return "", nil
+	}
+
+	return strings.Join(chunks, "\n") + "\n", nil
 }
 
 func runUnstagedDiff(cfg *Config) (string, error) {

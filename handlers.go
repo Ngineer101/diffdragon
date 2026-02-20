@@ -91,7 +91,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		if err != nil {
 			return err
 		}
-		AnalyzeDiff(diffData)
+		AnalyzeDiff(diffData, ai)
 		holder.Replace(diffData)
 		return nil
 	}
@@ -344,7 +344,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
 			return
 		}
-		AnalyzeDiff(diffData)
+		AnalyzeDiff(diffData, ai)
 		holder.Replace(diffData)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -543,6 +543,79 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		json.NewEncoder(w).Encode(status)
 	})
 
+	// API: return Git AI notes for a file between base/head refs.
+	mux.HandleFunc("/api/git-ai/file-notes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		path := strings.TrimSpace(r.URL.Query().Get("path"))
+		oldPath := strings.TrimSpace(r.URL.Query().Get("oldPath"))
+		base := strings.TrimSpace(r.URL.Query().Get("base"))
+		head := strings.TrimSpace(r.URL.Query().Get("head"))
+
+		if path == "" {
+			http.Error(w, "path is required", 400)
+			return
+		}
+		if base == "" || head == "" {
+			http.Error(w, "base and head are required", 400)
+			return
+		}
+
+		items, err := GetGitAIFileNotes(repo.Path, base, head, path, oldPath)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"items": items,
+		})
+	})
+
+	// API: return Git AI prompt details for a commit/prompt id.
+	mux.HandleFunc("/api/git-ai/prompt", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		promptID := strings.TrimSpace(r.URL.Query().Get("promptId"))
+		commit := strings.TrimSpace(r.URL.Query().Get("commit"))
+		if promptID == "" {
+			http.Error(w, "promptId is required", 400)
+			return
+		}
+		if commit == "" {
+			http.Error(w, "commit is required", 400)
+			return
+		}
+
+		detail, err := GetGitAIPromptDetail(repo.Path, promptID, commit)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(detail)
+	})
+
 	// API: stage a full file path.
 	mux.HandleFunc("/api/git/stage", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -608,6 +681,45 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		}
 
 		if err := UnstageFile(repo.Path, req.Path); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := reloadCurrentRepo(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to reload diff: %v", err), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buildDiffResponse(holder.Get()))
+	})
+
+	// API: discard all staged/unstaged changes for a file path.
+	mux.HandleFunc("/api/git/discard", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		repo, ok := repos.Current()
+		if !ok {
+			http.Error(w, "No repository selected", 400)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", 400)
+			return
+		}
+		if strings.TrimSpace(req.Path) == "" {
+			http.Error(w, "Path is required", 400)
+			return
+		}
+
+		if err := DiscardFileChanges(repo.Path, req.Path); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}

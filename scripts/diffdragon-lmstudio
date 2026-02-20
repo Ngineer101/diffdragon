@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/diffdragon"
+ENV_FILE="${DIFFDRAGON_ENV_FILE:-$CONFIG_DIR/lmstudio.env}"
+
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+
+repo_arg="${DIFFDRAGON_REPO:-$PWD}"
+if [[ "${1:-}" != "" && "${1:0:1}" != "-" ]]; then
+  repo_arg="$1"
+  shift
+fi
+
+exec diffdragon \
+  --repo "$repo_arg" \
+  --base "${DIFFDRAGON_BASE:-main}" \
+  --port "${DIFFDRAGON_PORT:-8384}" \
+  --ai lmstudio \
+  --lmstudio-url "${LMSTUDIO_URL:-http://127.0.0.1:1234/v1}" \
+  --lmstudio-model "${LMSTUDIO_MODEL:-local-model}" \
+  "$@"

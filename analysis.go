@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // riskPattern defines a pattern to match against file paths or diff content,
@@ -72,10 +73,14 @@ var riskPatterns = []riskPattern{
 
 // AnalyzeDiff performs risk scoring and semantic grouping on all files in the diff.
 // It sorts files by risk score (highest first) after analysis.
-func AnalyzeDiff(data *DiffData) {
+func AnalyzeDiff(data *DiffData, ai *AIClient) {
 	for _, file := range data.Files {
-		scoreFileRisk(file)
-		classifySemanticGroup(file)
+		scoreFileRiskHeuristic(file)
+		classifySemanticGroupHeuristic(file)
+	}
+
+	if ai != nil {
+		enrichRiskWithAI(data.Files, ai)
 	}
 
 	// Sort files: highest risk first
@@ -85,7 +90,7 @@ func AnalyzeDiff(data *DiffData) {
 }
 
 // scoreFileRisk calculates a risk score for a file based on heuristic patterns.
-func scoreFileRisk(file *DiffFile) {
+func scoreFileRiskHeuristic(file *DiffFile) {
 	pathLower := strings.ToLower(file.Path)
 	contentLower := strings.ToLower(file.RawDiff)
 	score := 0
@@ -155,7 +160,7 @@ func scoreFileRisk(file *DiffFile) {
 }
 
 // classifySemanticGroup assigns a semantic category to a file based on its path and content.
-func classifySemanticGroup(file *DiffFile) {
+func classifySemanticGroupHeuristic(file *DiffFile) {
 	pathLower := strings.ToLower(file.Path)
 	baseName := strings.ToLower(filepath.Base(file.Path))
 
@@ -232,4 +237,95 @@ func classifySemanticGroup(file *DiffFile) {
 
 	// Default to feature
 	file.SemanticGroup = "feature"
+}
+
+func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
+	const concurrency = 3
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, file := range files {
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(f *DiffFile) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			assessment, err := ai.AssessRisk(f)
+			if err != nil || assessment == nil {
+				return
+			}
+
+			f.RiskScore = blendRiskScores(f.RiskScore, assessment.RiskScore, assessment.Confidence)
+			f.RiskReasons = mergeReasons(assessment.Reasons, f.RiskReasons)
+
+			group := normalizeSemanticGroup(assessment.SemanticGroup)
+			if group != "" {
+				f.SemanticGroup = group
+			}
+		}(file)
+	}
+
+	wg.Wait()
+}
+
+func blendRiskScores(heuristic int, ai int, confidence string) int {
+	aiWeight := 0.55
+	switch strings.ToLower(strings.TrimSpace(confidence)) {
+	case "high":
+		aiWeight = 0.7
+	case "low":
+		aiWeight = 0.4
+	}
+
+	blended := int(float64(heuristic)*(1-aiWeight) + float64(ai)*aiWeight + 0.5)
+	if blended < 0 {
+		return 0
+	}
+	if blended > 100 {
+		return 100
+	}
+	return blended
+}
+
+func mergeReasons(primary []string, secondary []string) []string {
+	seen := make(map[string]bool)
+	merged := make([]string, 0, len(primary)+len(secondary))
+
+	addReason := func(reason string) {
+		reason = strings.TrimSpace(reason)
+		if reason == "" {
+			return
+		}
+		key := strings.ToLower(reason)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		merged = append(merged, reason)
+	}
+
+	for _, reason := range primary {
+		addReason(reason)
+	}
+	for _, reason := range secondary {
+		addReason(reason)
+	}
+
+	if len(merged) > 6 {
+		return merged[:6]
+	}
+
+	return merged
+}
+
+func normalizeSemanticGroup(group string) string {
+	group = strings.ToLower(strings.TrimSpace(group))
+	switch group {
+	case "feature", "bugfix", "refactor", "test", "config", "docs", "style":
+		return group
+	default:
+		return ""
+	}
 }

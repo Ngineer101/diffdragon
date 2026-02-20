@@ -6,9 +6,23 @@ import {
   ChevronRight,
   Loader2,
   TriangleAlert,
+  Undo2,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -63,6 +77,10 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const stageFile = useAppStore((s) => s.stageFile)
   const unstageFile = useAppStore((s) => s.unstageFile)
   const stagingPath = useAppStore((s) => s.stagingPath)
+  const discardFile = useAppStore((s) => s.discardFile)
+  const discardingPath = useAppStore((s) => s.discardingPath)
+  const gitAINotesCollapsed = useAppStore((s) => s.gitAINotesCollapsed)
+  const toggleGitAINotesCollapsed = useAppStore((s) => s.toggleGitAINotesCollapsed)
 
   const isReviewed = reviewedFiles.has(index)
   const hasAI = aiProvider !== "none"
@@ -72,7 +90,7 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const isUnstaged = gitStatus.unstagedFiles.includes(file.path)
   const canStage = diffMode === "unstaged" || isUnstaged
   const canUnstage = (diffMode === "staged" || isStaged) && !canStage
-  const isMutating = stagingPath === file.path
+  const isMutating = stagingPath === file.path || discardingPath === file.path
   const level = riskLevel(file.riskScore)
 
   const handleStage = async () => {
@@ -88,6 +106,15 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
       await unstageFile(file.path)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to unstage file")
+    }
+  }
+
+  const handleDiscard = async () => {
+    try {
+      await discardFile(file.path)
+      toast.success("Changes discarded", { description: file.path })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to discard changes")
     }
   }
 
@@ -120,7 +147,7 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
           </TooltipTrigger>
           <TooltipContent>
             <p className="text-xs">
-              Heuristic risk level based on file path and diff content
+              Risk level from heuristics plus AI analysis when configured
             </p>
           </TooltipContent>
         </Tooltip>
@@ -198,8 +225,42 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
             Unstage File
           </Button>
         )}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isMutating}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              {isMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+              Discard
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard file changes?</AlertDialogTitle>
+              <AlertDialogDescription className="break-all">
+                Discard all staged and unstaged changes for {file.path}? This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDiscard}>Discard</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <div className="ml-auto flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleGitAINotesCollapsed}
+            className="hidden lg:inline-flex"
+          >
+            {gitAINotesCollapsed ? <PanelRightOpen className="h-3.5 w-3.5" /> : <PanelRightClose className="h-3.5 w-3.5" />}
+            {gitAINotesCollapsed ? "Show Notes" : "Hide Notes"}
+          </Button>
           <Button
             variant="outline"
             size="sm"
