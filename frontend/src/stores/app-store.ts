@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Branch, DiffFile, DiffMode, DiffResponse, DiffStats, DiffStyle, GitStatus, Repo, ViewMode } from "@/types/api"
+import type { Branch, DiffFile, DiffMode, DiffResponse, DiffStats, DiffStyle, FileStageFilter, GitStatus, Repo, ViewMode } from "@/types/api"
 import * as api from "@/lib/api"
 
 interface AppState {
@@ -29,6 +29,7 @@ interface AppState {
   viewMode: ViewMode
   diffStyle: DiffStyle
   searchQuery: string
+  fileStageFilter: FileStageFilter
   gitAINotesCollapsed: boolean
   collapsedGroups: Record<string, boolean>
   reviewedFiles: Set<number>
@@ -56,6 +57,7 @@ interface AppState {
   selectFile: (index: number) => void
   setViewMode: (mode: ViewMode) => void
   setSearchQuery: (query: string) => void
+  setFileStageFilter: (filter: FileStageFilter) => void
   toggleGitAINotesCollapsed: () => void
   toggleGroup: (group: string) => void
   toggleReviewed: (index: number) => void
@@ -104,7 +106,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branches: [],
   currentBranch: "",
   compareRemote: false,
-  diffMode: "branches",
+  diffMode: "unstaged",
   repos: [],
   currentRepoId: "",
   prWorktreePath: null,
@@ -113,6 +115,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   viewMode: "risk",
   diffStyle: "unified",
   searchQuery: "",
+  fileStageFilter: "all",
   gitAINotesCollapsed: false,
   collapsedGroups: {},
   reviewedFiles: new Set(),
@@ -128,7 +131,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchDiff: async () => {
     set({ loading: true })
     try {
-      const data = await api.fetchDiff()
+      const initial = await api.fetchDiff()
+      const data = initial.currentRepoId
+        ? await api.reloadDiff({ staged: true, unstaged: true })
+        : initial
       set({
         data,
         files: data.files,
@@ -139,6 +145,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
+        diffMode: "unstaged",
         loading: false,
       })
     } catch {
@@ -179,7 +186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ reloading: true })
     try {
       const reposResult = await api.addRepo({ path, name })
-      const data = await api.fetchDiff()
+      const data = await api.reloadDiff({ staged: true, unstaged: true })
       set({
         repos: reposResult.repos,
         currentRepoId: reposResult.currentRepoId,
@@ -190,6 +197,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         headRef: data.headRef,
         aiProvider: data.aiProvider,
         gitStatus: data.gitStatus,
+        diffMode: "unstaged",
         activeFileIndex: -1,
         reviewedFiles: new Set(),
         reloading: false,
@@ -204,7 +212,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectRepo: async (repoId) => {
     set({ reloading: true })
     try {
-      const data = await api.selectRepo({ repoId })
+      await api.selectRepo({ repoId })
+      const data = await api.reloadDiff({ staged: true, unstaged: true })
       set({
         repos: data.repos,
         currentRepoId: data.currentRepoId,
@@ -215,6 +224,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         headRef: data.headRef,
         aiProvider: data.aiProvider,
         gitStatus: data.gitStatus,
+        diffMode: "unstaged",
         activeFileIndex: -1,
         reviewedFiles: new Set(),
         reloading: false,
@@ -284,6 +294,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
 
   setSearchQuery: (query) => set({ searchQuery: query }),
+
+  setFileStageFilter: (fileStageFilter) => set({ fileStageFilter }),
 
   toggleGitAINotesCollapsed: () =>
     set((state) => ({ gitAINotesCollapsed: !state.gitAINotesCollapsed })),

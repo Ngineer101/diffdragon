@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react"
+import { AlignJustify, Columns2, FileText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { useAppStore } from "@/stores/app-store"
@@ -6,6 +6,8 @@ import { useAppStore } from "@/stores/app-store"
 export function StatsBar() {
   const stats = useAppStore((s) => s.stats)
   const reviewedFiles = useAppStore((s) => s.reviewedFiles)
+  const diffStyle = useAppStore((s) => s.diffStyle)
+  const setDiffStyle = useAppStore((s) => s.setDiffStyle)
 
   if (!stats) return null
 
@@ -64,6 +66,31 @@ export function StatsBar() {
       <Badge variant="secondary" className="font-mono text-xs">
         Reviewed: {reviewedFiles.size}/{stats.totalFiles}
       </Badge>
+
+      <div className="ml-auto flex items-center rounded-md border border-border">
+        <button
+          onClick={() => setDiffStyle("unified")}
+          className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs transition-colors ${
+            diffStyle === "unified"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <AlignJustify className="h-3 w-3" />
+          Unified
+        </button>
+        <button
+          onClick={() => setDiffStyle("split")}
+          className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs transition-colors ${
+            diffStyle === "split"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Columns2 className="h-3 w-3" />
+          Split
+        </button>
+      </div>
     </div>
   )
 }

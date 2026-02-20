@@ -9,6 +9,17 @@ import { useAppStore } from "@/stores/app-store";
 import type { DiffFile } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -78,13 +89,7 @@ export function FileItem({ file, index }: FileItemProps) {
     }
   };
 
-  const handleDiscard = async (event: MouseEvent) => {
-    event.stopPropagation();
-    const confirmed = window.confirm(
-      `Discard all staged and unstaged changes for ${file.path}? This cannot be undone.`,
-    );
-    if (!confirmed) return;
-
+  const handleDiscard = async () => {
     try {
       await discardFile(file.path);
       toast.success("Changes discarded", { description: file.path });
@@ -153,20 +158,46 @@ export function FileItem({ file, index }: FileItemProps) {
                 )}
               </Button>
             )}
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={handleDiscard}
-              disabled={isMutating}
-              className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
-              title="Discard file changes"
-            >
-              {isMutating ? (
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              ) : (
-                <Undo2 className="h-2.5 w-2.5" />
-              )}
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={(event) => event.stopPropagation()}
+                  disabled={isMutating}
+                  className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
+                  title="Discard file changes"
+                >
+                  {isMutating ? (
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  ) : (
+                    <Undo2 className="h-2.5 w-2.5" />
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent onClick={(event) => event.stopPropagation()}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Discard file changes?</AlertDialogTitle>
+                  <AlertDialogDescription className="break-all">
+                    Discard all staged and unstaged changes for {file.path}? This
+                    cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={(event) => event.stopPropagation()}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDiscard();
+                    }}
+                  >
+                    Discard
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Badge
               variant="outline"
               className={cn(

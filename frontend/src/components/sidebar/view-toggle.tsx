@@ -18,9 +18,6 @@ export function ViewToggle() {
         <TabsTrigger value="grouped" className="flex-1 text-xs">
           By Type
         </TabsTrigger>
-        <TabsTrigger value="flat" className="flex-1 text-xs">
-          All Files
-        </TabsTrigger>
       </TabsList>
     </Tabs>
   )

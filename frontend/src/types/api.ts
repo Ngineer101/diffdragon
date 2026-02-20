@@ -73,7 +73,9 @@ export type SemanticGroup =
   | "docs"
   | "style"
 
-export type ViewMode = "risk" | "grouped" | "flat"
+export type ViewMode = "risk" | "grouped"
+
+export type FileStageFilter = "all" | "staged" | "unstaged"
 
 export interface Branch {
   name: string
