@@ -1,2 +1,5 @@
 .DS_Store
 static/
+
+# Local build artifacts
+/diffdragon
