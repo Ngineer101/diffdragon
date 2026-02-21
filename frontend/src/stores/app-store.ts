@@ -37,9 +37,6 @@ interface AppState {
   // Loading states
   loading: boolean
   reloading: boolean
-  summarizingFile: number | null
-  generatingChecklist: number | null
-  summarizingAll: boolean
   stagingPath: string | null
   discardingPath: string | null
   committingAndPushing: boolean
@@ -61,9 +58,6 @@ interface AppState {
   toggleGitAINotesCollapsed: () => void
   toggleGroup: (group: string) => void
   toggleReviewed: (index: number) => void
-  summarizeFile: (index: number) => Promise<void>
-  generateChecklist: (index: number) => Promise<void>
-  summarizeAll: () => Promise<void>
   stageFile: (path: string) => Promise<void>
   unstageFile: (path: string) => Promise<void>
   discardFile: (path: string) => Promise<void>
@@ -121,9 +115,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   reviewedFiles: new Set(),
   loading: true,
   reloading: false,
-  summarizingFile: null,
-  generatingChecklist: null,
-  summarizingAll: false,
   stagingPath: null,
   discardingPath: null,
   committingAndPushing: false,
@@ -318,52 +309,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { reviewedFiles: next }
     }),
-
-  summarizeFile: async (index) => {
-    set({ summarizingFile: index })
-    try {
-      const result = await api.summarizeFile(index)
-      if (result.error) throw new Error(result.error)
-      set((state) => {
-        const files = [...state.files]
-        files[index] = { ...files[index], summary: result.summary }
-        return { files, summarizingFile: null }
-      })
-    } catch (err) {
-      set({ summarizingFile: null })
-      throw err
-    }
-  },
-
-  generateChecklist: async (index) => {
-    set({ generatingChecklist: index })
-    try {
-      const result = await api.generateChecklist(index)
-      if (result.error) throw new Error(result.error)
-      set((state) => {
-        const files = [...state.files]
-        files[index] = { ...files[index], checklist: result.checklist }
-        return { files, generatingChecklist: null }
-      })
-    } catch (err) {
-      set({ generatingChecklist: null })
-      throw err
-    }
-  },
-
-  summarizeAll: async () => {
-    set({ summarizingAll: true })
-    try {
-      const result = await api.summarizeAll()
-      if (result.files) {
-        set({ files: result.files, summarizingAll: false })
-      } else {
-        set({ summarizingAll: false })
-      }
-    } catch {
-      set({ summarizingAll: false })
-    }
-  },
 
   stageFile: async (path) => {
     set({ stagingPath: path })

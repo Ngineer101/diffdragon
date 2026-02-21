@@ -1,6 +1,4 @@
 import {
-  Sparkles,
-  ListChecks,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -61,13 +59,8 @@ interface FileDetailHeaderProps {
 }
 
 export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
-  const aiProvider = useAppStore((s) => s.aiProvider)
   const reviewedFiles = useAppStore((s) => s.reviewedFiles)
   const toggleReviewed = useAppStore((s) => s.toggleReviewed)
-  const summarizeFile = useAppStore((s) => s.summarizeFile)
-  const generateChecklist = useAppStore((s) => s.generateChecklist)
-  const summarizingFile = useAppStore((s) => s.summarizingFile)
-  const generatingChecklist = useAppStore((s) => s.generatingChecklist)
   const nextFile = useAppStore((s) => s.nextFile)
   const prevFile = useAppStore((s) => s.prevFile)
   const activeFileIndex = useAppStore((s) => s.activeFileIndex)
@@ -83,9 +76,6 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const toggleGitAINotesCollapsed = useAppStore((s) => s.toggleGitAINotesCollapsed)
 
   const isReviewed = reviewedFiles.has(index)
-  const hasAI = aiProvider !== "none"
-  const isSummarizing = summarizingFile === index
-  const isChecklistLoading = generatingChecklist === index
   const isStaged = gitStatus.stagedFiles.includes(file.path)
   const isUnstaged = gitStatus.unstagedFiles.includes(file.path)
   const canStage = diffMode === "unstaged" || isUnstaged
@@ -159,47 +149,17 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
             <TriangleAlert className="h-4 w-4" />
             Why this file is marked {level.toLowerCase()} risk
           </div>
-          <div className="flex flex-wrap gap-2">
+          <ul className="list-disc pl-4 space-y-1">
           {file.riskReasons.map((reason) => (
-            <Badge key={reason} variant="secondary" className="text-xs font-medium">
+            <li key={reason} className="text-xs">
               {reason}
-            </Badge>
+            </li>
           ))}
-          </div>
+          </ul>
         </div>
       )}
 
       <div className="flex flex-wrap gap-2">
-        {hasAI && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => summarizeFile(index)}
-              disabled={isSummarizing}
-            >
-              {isSummarizing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              {isSummarizing ? "Summarizing..." : "Summarize"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => generateChecklist(index)}
-              disabled={isChecklistLoading}
-            >
-              {isChecklistLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ListChecks className="h-3.5 w-3.5" />
-              )}
-              {isChecklistLoading ? "Generating..." : "Checklist"}
-            </Button>
-          </>
-        )}
         <Button
           variant={isReviewed ? "default" : "outline"}
           size="sm"

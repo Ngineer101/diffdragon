@@ -32,28 +32,6 @@ export async function fetchDiff(): Promise<DiffResponse> {
   return resp.json()
 }
 
-export async function summarizeFile(
-  fileIndex: number,
-): Promise<{ summary?: string; error?: string }> {
-  const resp = await fetch("/api/summarize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileIndex, hunkIndex: -1 }),
-  })
-  return resp.json()
-}
-
-export async function generateChecklist(
-  fileIndex: number,
-): Promise<{ checklist?: string[]; error?: string }> {
-  const resp = await fetch("/api/checklist", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileIndex }),
-  })
-  return resp.json()
-}
-
 export async function fetchBranches(): Promise<BranchesResponse> {
   const resp = await fetch("/api/branches")
   if (!resp.ok) throw new Error(await readError(resp, `Failed to fetch branches: ${resp.statusText}`))
@@ -99,15 +77,6 @@ export async function reloadDiff(params: ReloadDiffRequest): Promise<DiffRespons
     body: JSON.stringify(params),
   })
   if (!resp.ok) throw new Error(await readError(resp, `Failed to reload diff: ${resp.statusText}`))
-  return resp.json()
-}
-
-export async function summarizeAll(): Promise<{
-  completed: boolean
-  errors: string[]
-  files: DiffResponse["files"]
-}> {
-  const resp = await fetch("/api/summarize-all", { method: "POST" })
   return resp.json()
 }
 

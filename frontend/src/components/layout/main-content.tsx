@@ -3,8 +3,6 @@ import { Eye, FileSearch } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/stores/app-store"
 import { FileDetailHeader } from "@/components/detail/file-detail-header"
-import { AISummaryPanel } from "@/components/detail/ai-summary-panel"
-import { ReviewChecklist } from "@/components/detail/review-checklist"
 import { DiffViewer } from "@/components/detail/diff-viewer"
 import { GitAINotesPanel } from "@/components/detail/git-ai-notes-panel"
 import type { GitAIFileNoteItem } from "@/types/api"
@@ -98,11 +96,6 @@ export function MainContent() {
           ref={scrollRef}
         >
           <div className="pb-8">
-            <AISummaryPanel summary={file.summary} fileIndex={activeFileIndex} />
-            <ReviewChecklist
-              checklist={file.checklist}
-              fileIndex={activeFileIndex}
-            />
             <DiffViewer
               rawDiff={file.rawDiff}
               filePath={file.path}

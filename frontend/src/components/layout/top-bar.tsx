@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Sparkles,
   Loader2,
   GitCommitHorizontal,
   Upload,
@@ -24,9 +23,6 @@ import { toast } from "sonner";
 import type { Repo } from "@/types/api";
 
 export function TopBar() {
-  const aiProvider = useAppStore((s) => s.aiProvider);
-  const summarizeAll = useAppStore((s) => s.summarizeAll);
-  const summarizingAll = useAppStore((s) => s.summarizingAll);
   const reloading = useAppStore((s) => s.reloading);
   const repos = useAppStore((s) => s.repos);
   const currentRepoId = useAppStore((s) => s.currentRepoId);
@@ -189,24 +185,6 @@ export function TopBar() {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-
-        {aiProvider !== "none" && hasRepo && (
-          <Button
-            size="sm"
-            onClick={() => summarizeAll()}
-            disabled={summarizingAll || !hasRepo}
-          >
-            {summarizingAll ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            <span className="hidden md:inline">
-              {summarizingAll ? "Summarizing..." : "Summarize"}
-            </span>
-          </Button>
-        )}
-
         {hasRepo && (
           <details className="relative">
             <summary className="inline-flex list-none cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
