@@ -43,6 +43,7 @@ export interface DiffResponse {
   gitStatus: GitStatus
   repos: Repo[]
   currentRepoId: string
+  aiAnalyzing: boolean
 }
 
 export interface GitStatus {

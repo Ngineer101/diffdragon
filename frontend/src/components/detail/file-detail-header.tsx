@@ -74,6 +74,7 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const discardingPath = useAppStore((s) => s.discardingPath)
   const gitAINotesCollapsed = useAppStore((s) => s.gitAINotesCollapsed)
   const toggleGitAINotesCollapsed = useAppStore((s) => s.toggleGitAINotesCollapsed)
+  const aiAnalyzing = useAppStore((s) => s.aiAnalyzing)
 
   const isReviewed = reviewedFiles.has(index)
   const isStaged = gitStatus.stagedFiles.includes(file.path)
@@ -81,6 +82,7 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
   const canStage = diffMode === "unstaged" || isUnstaged
   const canUnstage = (diffMode === "staged" || isStaged) && !canStage
   const isMutating = stagingPath === file.path || discardingPath === file.path
+  const isFileAnalyzing = aiAnalyzing && (!file.riskReasons || file.riskReasons.length === 0)
   const level = riskLevel(file.riskScore)
 
   const handleStage = async () => {
@@ -123,27 +125,46 @@ export function FileDetailHeader({ file, index }: FileDetailHeaderProps) {
         <h2 className="min-w-0 break-all font-mono text-base font-semibold">
           {file.path}
         </h2>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge
-              variant="outline"
-              className={cn(
-                "ml-auto shrink-0 px-3 py-1 text-sm font-bold tracking-wide",
-                riskBadgeClass(file.riskScore),
-              )}
-            >
-              {level} Risk
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs">
-              Risk level from heuristics plus AI analysis when configured
-            </p>
-          </TooltipContent>
-        </Tooltip>
+        {isFileAnalyzing ? (
+          <Badge
+            variant="outline"
+            className="ml-auto shrink-0 px-3 py-1 text-sm font-bold tracking-wide bg-muted text-muted-foreground border-muted"
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            Analyzing
+          </Badge>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "ml-auto shrink-0 px-3 py-1 text-sm font-bold tracking-wide",
+                  riskBadgeClass(file.riskScore),
+                )}
+              >
+                {level} Risk
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">
+                Risk level determined by AI analysis
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
-      {file.riskReasons?.length > 0 && (
+      {isFileAnalyzing && (
+        <div className="mb-3 rounded-md border border-muted px-3 py-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            AI is analyzing this file for risks...
+          </div>
+        </div>
+      )}
+
+      {!isFileAnalyzing && file.riskReasons?.length > 0 && (
         <div className={cn("mb-3 rounded-md border px-3 py-2", riskBadgeClass(file.riskScore))}>
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
             <TriangleAlert className="h-4 w-4" />

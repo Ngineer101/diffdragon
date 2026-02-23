@@ -228,7 +228,9 @@ func parseFileDiff(section string) *DiffFile {
 		return nil
 	}
 
-	file := &DiffFile{}
+	file := &DiffFile{
+		RiskReasons: []string{}, // Initialize as empty (indicates "waiting for analysis")
+	}
 
 	// Parse the "diff --git a/path b/path" header
 	header := lines[0]

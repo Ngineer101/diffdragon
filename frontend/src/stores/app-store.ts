@@ -37,6 +37,7 @@ interface AppState {
   // Loading states
   loading: boolean
   reloading: boolean
+  aiAnalyzing: boolean
   stagingPath: string | null
   discardingPath: string | null
   committingAndPushing: boolean
@@ -48,6 +49,7 @@ interface AppState {
   addRepo: (path: string, name?: string) => Promise<void>
   selectRepo: (repoId: string) => Promise<void>
   reloadDiff: (params: { base?: string; head?: string; staged?: boolean; unstaged?: boolean }) => Promise<void>
+  startPollingForAIAnalysis: () => void
   setCompareRemote: (remote: boolean) => void
   setDiffMode: (mode: DiffMode) => void
   setDiffStyle: (style: DiffStyle) => void
@@ -115,6 +117,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   reviewedFiles: new Set(),
   loading: true,
   reloading: false,
+  aiAnalyzing: false,
   stagingPath: null,
   discardingPath: null,
   committingAndPushing: false,
@@ -136,9 +139,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
+        aiAnalyzing: data.aiAnalyzing,
         diffMode: "unstaged",
         loading: false,
       })
+
+      if (data.aiAnalyzing) {
+        get().startPollingForAIAnalysis()
+      }
     } catch {
       set({ loading: false })
     }
@@ -215,12 +223,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         headRef: data.headRef,
         aiProvider: data.aiProvider,
         gitStatus: data.gitStatus,
+        aiAnalyzing: data.aiAnalyzing,
         diffMode: "unstaged",
         activeFileIndex: -1,
         reviewedFiles: new Set(),
         reloading: false,
       })
       await get().fetchBranches()
+
+      if (data.aiAnalyzing) {
+        get().startPollingForAIAnalysis()
+      }
     } catch (err) {
       set({ reloading: false })
       throw err
@@ -239,15 +252,38 @@ export const useAppStore = create<AppState>((set, get) => ({
         headRef: data.headRef,
         aiProvider: data.aiProvider,
         gitStatus: data.gitStatus,
-        repos: data.repos,
-        currentRepoId: data.currentRepoId,
-        activeFileIndex: -1,
-        reviewedFiles: new Set(),
-        reloading: false,
+        aiAnalyzing: data.aiAnalyzing,
       })
-    } catch {
+
+      if (data.aiAnalyzing) {
+        get().startPollingForAIAnalysis()
+      }
+    } finally {
       set({ reloading: false })
     }
+  },
+
+  startPollingForAIAnalysis: () => {
+    const poll = async () => {
+      try {
+        const data = await api.fetchDiff()
+        set({
+          files: data.files,
+          stats: data.stats,
+          aiAnalyzing: data.aiAnalyzing,
+        })
+
+        if (data.aiAnalyzing) {
+          setTimeout(poll, 2000)
+        }
+      } catch {
+        // On error, stop polling
+        set({ aiAnalyzing: false })
+      }
+    }
+
+    set({ aiAnalyzing: true })
+    setTimeout(poll, 2000)
   },
 
   setCompareRemote: (remote) => {

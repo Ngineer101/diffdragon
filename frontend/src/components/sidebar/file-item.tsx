@@ -59,6 +59,7 @@ export function FileItem({ file, index }: FileItemProps) {
   const stagingPath = useAppStore((s) => s.stagingPath);
   const discardFile = useAppStore((s) => s.discardFile);
   const discardingPath = useAppStore((s) => s.discardingPath);
+  const aiAnalyzing = useAppStore((s) => s.aiAnalyzing);
 
   const isActive = index === activeFileIndex;
   const isReviewed = reviewedFiles.has(index);
@@ -67,6 +68,7 @@ export function FileItem({ file, index }: FileItemProps) {
   const canStage = diffMode === "unstaged" || isUnstaged;
   const canUnstage = (diffMode === "staged" || isStaged) && !canStage;
   const isMutating = stagingPath === file.path || discardingPath === file.path;
+  const isFileAnalyzing = aiAnalyzing && (!file.riskReasons || file.riskReasons.length === 0);
   const level = riskLevel(file.riskScore);
 
   const handleStage = async (event: MouseEvent) => {
@@ -198,15 +200,32 @@ export function FileItem({ file, index }: FileItemProps) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Badge
-              variant="outline"
-              className={cn(
-                "shrink-0 px-2 py-0 text-[10px] font-semibold",
-                riskClass(file.riskScore),
-              )}
-            >
-              {level}
-            </Badge>
+            {isFileAnalyzing ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 px-2 py-0 text-[10px] font-semibold bg-muted text-muted-foreground border-muted"
+                  >
+                    <Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />
+                    Analyzing
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">AI is analyzing risk for this file</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "shrink-0 px-2 py-0 text-[10px] font-semibold",
+                  riskClass(file.riskScore),
+                )}
+              >
+                {level}
+              </Badge>
+            )}
           </div>
           <div className="flex min-w-0 items-center gap-2.5 pl-0.5">
             <span className="shrink-0 font-mono text-[11px]">

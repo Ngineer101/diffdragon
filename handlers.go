@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -14,8 +13,9 @@ import (
 // DiffHolder provides mutex-protected access to the current diff data,
 // allowing it to be replaced at runtime when the user changes branches.
 type DiffHolder struct {
-	mu   sync.RWMutex
-	data *DiffData
+	mu          sync.RWMutex
+	data        *DiffData
+	aiAnalyzing bool
 }
 
 func NewDiffHolder(data *DiffData) *DiffHolder {
@@ -32,6 +32,18 @@ func (h *DiffHolder) Replace(data *DiffData) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.data = data
+}
+
+func (h *DiffHolder) SetAIAnalyzing(v bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.aiAnalyzing = v
+}
+
+func (h *DiffHolder) IsAIAnalyzing() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.aiAnalyzing
 }
 
 // RegisterHandlers sets up all HTTP routes on the given mux.
@@ -59,6 +71,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 				"gitStatus":     gitStatus,
 				"repos":         repos.List(),
 				"currentRepoId": repos.CurrentID(),
+				"aiAnalyzing":   holder.IsAIAnalyzing(),
 			}
 		}
 
@@ -71,6 +84,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			"gitStatus":     gitStatus,
 			"repos":         repos.List(),
 			"currentRepoId": repos.CurrentID(),
+			"aiAnalyzing":   holder.IsAIAnalyzing(),
 		}
 	}
 
@@ -91,8 +105,17 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		if err != nil {
 			return err
 		}
-		AnalyzeDiff(diffData, ai)
+		// Analyze with heuristics immediately for fast UI response
+		AnalyzeDiffHeuristics(diffData)
 		holder.Replace(diffData)
+		// Enrich with AI in the background so repo switching isn't blocked
+		if ai != nil {
+			holder.SetAIAnalyzing(true)
+			go func() {
+				AnalyzeDiffAI(diffData, ai, holder)
+				holder.SetAIAnalyzing(false)
+			}()
+		}
 		return nil
 	}
 	if !cfg.Dev {
@@ -344,180 +367,20 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			http.Error(w, fmt.Sprintf("Failed to parse diff: %v", err), 500)
 			return
 		}
-		AnalyzeDiff(diffData, ai)
+		// Analyze with heuristics immediately for fast response
+		AnalyzeDiffHeuristics(diffData)
 		holder.Replace(diffData)
+		// Enrich with AI in the background
+		if ai != nil {
+			holder.SetAIAnalyzing(true)
+			go func() {
+				AnalyzeDiffAI(diffData, ai, holder)
+				holder.SetAIAnalyzing(false)
+			}()
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(buildDiffResponse(diffData))
-	})
-
-	// API: summarize a specific file
-	mux.HandleFunc("/api/summarize", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", 405)
-			return
-		}
-
-		if ai == nil {
-			http.Error(w, "No AI provider configured", 400)
-			return
-		}
-
-		var req struct {
-			FileIndex int `json:"fileIndex"`
-			HunkIndex int `json:"hunkIndex"` // -1 for file-level summary
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", 400)
-			return
-		}
-
-		data := holder.Get()
-		if data == nil {
-			http.Error(w, "No repository selected", 400)
-			return
-		}
-		if req.FileIndex < 0 || req.FileIndex >= len(data.Files) {
-			http.Error(w, "File index out of range", 400)
-			return
-		}
-
-		file := data.Files[req.FileIndex]
-		w.Header().Set("Content-Type", "application/json")
-
-		if req.HunkIndex == -1 {
-			// File-level summary
-			summary, err := ai.SummarizeFile(file)
-			if err != nil {
-				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-				return
-			}
-			file.Summary = summary
-			json.NewEncoder(w).Encode(map[string]string{"summary": summary})
-		} else {
-			// Hunk-level summary
-			if req.HunkIndex < 0 || req.HunkIndex >= len(file.Hunks) {
-				http.Error(w, "Hunk index out of range", 400)
-				return
-			}
-			hunk := file.Hunks[req.HunkIndex]
-			summary, err := ai.SummarizeHunk(file, hunk)
-			if err != nil {
-				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-				return
-			}
-			hunk.Summary = summary
-			json.NewEncoder(w).Encode(map[string]string{"summary": summary})
-		}
-	})
-
-	// API: generate review checklist for a file
-	mux.HandleFunc("/api/checklist", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", 405)
-			return
-		}
-
-		if ai == nil {
-			http.Error(w, "No AI provider configured", 400)
-			return
-		}
-
-		var req struct {
-			FileIndex int `json:"fileIndex"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", 400)
-			return
-		}
-
-		data := holder.Get()
-		if data == nil {
-			http.Error(w, "No repository selected", 400)
-			return
-		}
-		if req.FileIndex < 0 || req.FileIndex >= len(data.Files) {
-			http.Error(w, "File index out of range", 400)
-			return
-		}
-
-		file := data.Files[req.FileIndex]
-		checklist, err := ai.GenerateChecklist(file)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-
-		file.Checklist = checklist
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"checklist": checklist})
-	})
-
-	// API: summarize all files (runs concurrently with rate limiting)
-	mux.HandleFunc("/api/summarize-all", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", 405)
-			return
-		}
-
-		if ai == nil {
-			http.Error(w, "No AI provider configured", 400)
-			return
-		}
-
-		// Parse optional concurrency limit
-		concurrency := 3
-		if c := r.URL.Query().Get("concurrency"); c != "" {
-			if parsed, err := strconv.Atoi(c); err == nil && parsed > 0 && parsed <= 10 {
-				concurrency = parsed
-			}
-		}
-
-		data := holder.Get()
-		if data == nil {
-			http.Error(w, "No repository selected", 400)
-			return
-		}
-
-		// Run summarization concurrently
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, concurrency)
-		errors := make([]string, 0)
-		var mu sync.Mutex
-
-		for i, file := range data.Files {
-			if file.Summary != "" {
-				continue // Already summarized
-			}
-
-			wg.Add(1)
-			sem <- struct{}{} // Acquire semaphore
-
-			go func(idx int, f *DiffFile) {
-				defer wg.Done()
-				defer func() { <-sem }() // Release semaphore
-
-				summary, err := ai.SummarizeFile(f)
-				mu.Lock()
-				defer mu.Unlock()
-
-				if err != nil {
-					errors = append(errors, fmt.Sprintf("%s: %s", f.Path, err.Error()))
-				} else {
-					f.Summary = summary
-				}
-			}(i, file)
-		}
-
-		wg.Wait()
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"completed": true,
-			"errors":    errors,
-			"files":     data.Files,
-		})
 	})
 
 	// API: return git status for the selected repository.

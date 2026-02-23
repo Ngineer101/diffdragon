@@ -1,4 +1,4 @@
-.PHONY: build dev-frontend dev-backend release-service-update clean
+.PHONY: build dev-frontend dev-backend macos linux clean
 
 BINDIR ?= /usr/local/bin
 SERVICE ?= diffdragon
@@ -14,7 +14,12 @@ dev-frontend:
 dev-backend:
 	go run . --base main --ai claude
 
-release-service-update: build
+macos: build
+	sudo install -m 755 ./diffdragon $(BINDIR)/diffdragon
+	sudo install -m 755 ./scripts/diffdragon-lmstudio $(BINDIR)/diffdragon-lmstudio
+	@echo "Installed to $(BINDIR). On macOS, use launchd or manually run the app."
+
+linux: build
 	sudo install -m 755 ./diffdragon $(BINDIR)/diffdragon
 	sudo install -m 755 ./scripts/diffdragon-lmstudio $(BINDIR)/diffdragon-lmstudio
 	mkdir -p $(SYSTEMD_USER_DIR)

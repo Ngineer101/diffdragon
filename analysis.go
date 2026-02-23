@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -87,6 +88,41 @@ func AnalyzeDiff(data *DiffData, ai *AIClient) {
 	sort.Slice(data.Files, func(i, j int) bool {
 		return data.Files[i].RiskScore > data.Files[j].RiskScore
 	})
+}
+
+// AnalyzeDiffHeuristics runs only semantic grouping for fast response.
+// Risk analysis is done by AI in the background.
+func AnalyzeDiffHeuristics(data *DiffData) {
+	for _, file := range data.Files {
+		classifySemanticGroupHeuristic(file)
+	}
+}
+
+// AnalyzeDiffAI enriches the diff with AI analysis in the background.
+// It updates the holder when complete so the UI reflects the enriched data.
+func AnalyzeDiffAI(data *DiffData, ai *AIClient, holder *DiffHolder) {
+	if ai == nil || len(data.Files) == 0 {
+		return
+	}
+
+	// Create a copy of the files to work with
+	files := make([]*DiffFile, len(data.Files))
+	for i := range data.Files {
+		files[i] = data.Files[i]
+	}
+
+	enrichRiskWithAI(files, ai)
+
+	// Sort files by the new risk scores
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].RiskScore > files[j].RiskScore
+	})
+
+	// Update the diff data with enriched results
+	data.Files = files
+
+	// Replace in holder so UI updates
+	holder.Replace(data)
 }
 
 // scoreFileRisk calculates a risk score for a file based on heuristic patterns.
@@ -253,12 +289,29 @@ func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
 			defer func() { <-sem }()
 
 			assessment, err := ai.AssessRisk(f)
-			if err != nil || assessment == nil {
+			if err != nil {
+				log.Printf("AI risk assessment failed for %s: %v", f.Path, err)
+				f.RiskReasons = []string{"AI analysis failed"}
+				return
+			}
+			if assessment == nil {
+				log.Printf("AI risk assessment returned nil for %s", f.Path)
+				f.RiskReasons = []string{"AI analysis unavailable"}
 				return
 			}
 
-			f.RiskScore = blendRiskScores(f.RiskScore, assessment.RiskScore, assessment.Confidence)
-			f.RiskReasons = mergeReasons(assessment.Reasons, f.RiskReasons)
+			f.RiskScore = assessment.RiskScore
+			if f.RiskScore < 0 {
+				f.RiskScore = 0
+			}
+			if f.RiskScore > 100 {
+				f.RiskScore = 100
+			}
+			if len(assessment.Reasons) > 0 {
+				f.RiskReasons = assessment.Reasons
+			} else {
+				f.RiskReasons = []string{"No specific risks identified"}
+			}
 
 			group := normalizeSemanticGroup(assessment.SemanticGroup)
 			if group != "" {
@@ -268,6 +321,7 @@ func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
 	}
 
 	wg.Wait()
+	log.Printf("AI risk analysis complete for %d files", len(files))
 }
 
 func blendRiskScores(heuristic int, ai int, confidence string) int {
