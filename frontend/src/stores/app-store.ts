@@ -10,6 +10,7 @@ interface AppState {
   baseRef: string
   headRef: string
   aiProvider: string
+  aiError: string
   gitStatus: GitStatus
 
   // Branch state
@@ -98,6 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   baseRef: "",
   headRef: "",
   aiProvider: "none",
+  aiError: "",
   gitStatus: emptyGitStatus,
   branches: [],
   currentBranch: "",
@@ -136,6 +138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
@@ -195,6 +198,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         diffMode: "unstaged",
         activeFileIndex: -1,
@@ -222,6 +226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         aiAnalyzing: data.aiAnalyzing,
         diffMode: "unstaged",
@@ -251,6 +256,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         aiAnalyzing: data.aiAnalyzing,
       })
@@ -271,6 +277,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           files: data.files,
           stats: data.stats,
           aiAnalyzing: data.aiAnalyzing,
+          aiError: data.aiError,
         })
 
         if (data.aiAnalyzing) {
@@ -357,6 +364,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
@@ -379,6 +387,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
@@ -401,6 +410,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,
@@ -424,6 +434,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         baseRef: data.baseRef,
         headRef: data.headRef,
         aiProvider: data.aiProvider,
+        aiError: data.aiError,
         gitStatus: data.gitStatus,
         repos: data.repos,
         currentRepoId: data.currentRepoId,

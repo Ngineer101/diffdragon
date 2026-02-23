@@ -26,6 +26,7 @@ linux: build
 	printf '%s\n' '[Unit]' 'Description=DiffDragon local service (LM Studio)' '' '[Service]' 'ExecStart=$(BINDIR)/diffdragon-lmstudio' 'Restart=on-failure' 'RestartSec=2' '' '[Install]' 'WantedBy=default.target' > $(SYSTEMD_USER_DIR)/$(SERVICE).service
 	systemctl --user daemon-reload
 	systemctl --user enable --now $(SERVICE)
+	systemctl --user restart $(SERVICE)
 	systemctl --user --no-pager --lines=6 status $(SERVICE)
 
 clean:

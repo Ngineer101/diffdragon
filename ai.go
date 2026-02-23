@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,6 +52,11 @@ func NewAIClient(cfg *Config) *AIClient {
 
 // AssessRisk generates an AI risk assessment for a file diff.
 func (ai *AIClient) AssessRisk(file *DiffFile) (*AIRiskAssessment, error) {
+	return ai.AssessRiskWithContext(context.Background(), file)
+}
+
+// AssessRiskWithContext generates an AI risk assessment for a file diff with cancellation support.
+func (ai *AIClient) AssessRiskWithContext(ctx context.Context, file *DiffFile) (*AIRiskAssessment, error) {
 	if ai == nil {
 		return nil, fmt.Errorf("no AI provider configured")
 	}
@@ -77,9 +83,9 @@ Current heuristic reasons: %s
 Current heuristic semantic group: %s
 
 Diff:
-%s`, file.Path, file.Status, file.Language, file.LinesAdded, file.LinesRemoved, file.RiskScore, strings.Join(file.RiskReasons, ", "), file.SemanticGroup, truncate(file.RawDiff, 5000))
+%s`, file.Path, file.Status, file.Language, file.LinesAdded, file.LinesRemoved, file.RiskScore, strings.Join(file.RiskReasons, ", "), file.SemanticGroup, truncate(file.RawDiff, 2200))
 
-	result, err := ai.complete(prompt)
+	result, err := ai.complete(ctx, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +104,17 @@ Diff:
 	}
 
 	return &assessment, nil
+}
+
+// RiskConcurrency returns the worker count for batch risk analysis.
+func (ai *AIClient) RiskConcurrency() int {
+	if ai == nil {
+		return 1
+	}
+	if ai.provider == "lmstudio" {
+		return 1
+	}
+	return 3
 }
 
 // SummarizeFile generates a natural language summary for a file diff.
@@ -119,7 +136,7 @@ Diff:
 
 Respond with ONLY the summary, no preamble or formatting.`, file.Path, file.Status, file.Language, file.LinesAdded, file.LinesRemoved, truncate(file.RawDiff, 4000))
 
-	return ai.complete(prompt)
+	return ai.complete(context.Background(), prompt)
 }
 
 // SummarizeHunk generates a summary for a single diff hunk.
@@ -138,7 +155,7 @@ Diff content:
 
 Respond with ONLY the summary, no preamble or formatting.`, file.Path, file.Language, hunk.Header, truncate(hunk.Content, 3000))
 
-	return ai.complete(prompt)
+	return ai.complete(context.Background(), prompt)
 }
 
 // GenerateChecklist creates a review checklist for a file based on its diff.
@@ -160,7 +177,7 @@ Diff:
 Respond with ONLY a JSON array of strings, each being one checklist item. Example:
 ["Check that the SQL query uses parameterized arguments", "Verify error is propagated to caller"]`, file.Path, file.Status, file.Language, strings.Join(file.RiskReasons, ", "), truncate(file.RawDiff, 4000))
 
-	result, err := ai.complete(prompt)
+	result, err := ai.complete(context.Background(), prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -186,21 +203,21 @@ Respond with ONLY a JSON array of strings, each being one checklist item. Exampl
 }
 
 // complete sends a prompt to the configured AI provider and returns the response.
-func (ai *AIClient) complete(prompt string) (string, error) {
+func (ai *AIClient) complete(ctx context.Context, prompt string) (string, error) {
 	switch ai.provider {
 	case "claude":
-		return ai.completeClaude(prompt)
+		return ai.completeClaude(ctx, prompt)
 	case "ollama":
-		return ai.completeOllama(prompt)
+		return ai.completeOllama(ctx, prompt)
 	case "lmstudio":
-		return ai.completeLMStudio(prompt)
+		return ai.completeLMStudio(ctx, prompt)
 	default:
 		return "", fmt.Errorf("unknown AI provider: %s", ai.provider)
 	}
 }
 
 // completeClaude calls the Anthropic Messages API.
-func (ai *AIClient) completeClaude(prompt string) (string, error) {
+func (ai *AIClient) completeClaude(ctx context.Context, prompt string) (string, error) {
 	body := map[string]interface{}{
 		"model":      "claude-sonnet-4-20250514",
 		"max_tokens": 1024,
@@ -214,7 +231,7 @@ func (ai *AIClient) completeClaude(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -255,7 +272,7 @@ func (ai *AIClient) completeClaude(prompt string) (string, error) {
 }
 
 // completeOllama calls the Ollama generate API.
-func (ai *AIClient) completeOllama(prompt string) (string, error) {
+func (ai *AIClient) completeOllama(ctx context.Context, prompt string) (string, error) {
 	body := map[string]interface{}{
 		"model":  ai.ollamaModel,
 		"prompt": prompt,
@@ -271,7 +288,13 @@ func (ai *AIClient) completeOllama(prompt string) (string, error) {
 	}
 
 	url := strings.TrimSuffix(ai.ollamaURL, "/") + "/api/generate"
-	resp, err := ai.httpClient.Post(url, "application/json", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ai.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Ollama request failed (is Ollama running?): %w", err)
 	}
@@ -297,7 +320,7 @@ func (ai *AIClient) completeOllama(prompt string) (string, error) {
 }
 
 // completeLMStudio calls the OpenAI-compatible chat completions API exposed by LM Studio.
-func (ai *AIClient) completeLMStudio(prompt string) (string, error) {
+func (ai *AIClient) completeLMStudio(ctx context.Context, prompt string) (string, error) {
 	baseURL := strings.TrimSuffix(ai.lmstudioURL, "/")
 	url := baseURL
 	if !strings.HasSuffix(url, "/chat/completions") {
@@ -322,7 +345,7 @@ func (ai *AIClient) completeLMStudio(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -362,6 +385,68 @@ func (ai *AIClient) completeLMStudio(prompt string) (string, error) {
 	}
 
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
+// Preflight verifies the configured AI endpoint is reachable before starting batch analysis.
+func (ai *AIClient) Preflight(ctx context.Context) error {
+	if ai == nil {
+		return fmt.Errorf("no AI provider configured")
+	}
+
+	switch ai.provider {
+	case "lmstudio":
+		baseURL := strings.TrimSuffix(ai.lmstudioURL, "/")
+		baseURL = strings.TrimSuffix(baseURL, "/chat/completions")
+		if !strings.HasSuffix(baseURL, "/v1") {
+			baseURL += "/v1"
+		}
+
+		url := baseURL + "/models"
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create LM Studio preflight request: %w", err)
+		}
+		if strings.TrimSpace(ai.lmstudioAPIKey) != "" {
+			req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(ai.lmstudioAPIKey))
+		}
+
+		resp, err := ai.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("LM Studio preflight failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("LM Studio preflight read failed: %w", err)
+		}
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("LM Studio preflight returned status %d: %s", resp.StatusCode, string(respBody))
+		}
+
+		if strings.TrimSpace(ai.lmstudioModel) != "" {
+			var modelsResp struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(respBody, &modelsResp); err == nil {
+				for _, m := range modelsResp.Data {
+					if strings.TrimSpace(m.ID) == strings.TrimSpace(ai.lmstudioModel) {
+						return nil
+					}
+				}
+				if len(modelsResp.Data) > 0 {
+					return fmt.Errorf("LM Studio model %q is not loaded. Available models: %d", ai.lmstudioModel, len(modelsResp.Data))
+				}
+			}
+		}
+		return nil
+	case "ollama", "claude":
+		return nil
+	default:
+		return fmt.Errorf("unknown AI provider: %s", ai.provider)
+	}
 }
 
 // truncate limits a string to maxLen characters.

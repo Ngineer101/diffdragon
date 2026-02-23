@@ -16,6 +16,7 @@ type DiffHolder struct {
 	mu          sync.RWMutex
 	data        *DiffData
 	aiAnalyzing bool
+	aiLastError string
 }
 
 func NewDiffHolder(data *DiffData) *DiffHolder {
@@ -46,6 +47,18 @@ func (h *DiffHolder) IsAIAnalyzing() bool {
 	return h.aiAnalyzing
 }
 
+func (h *DiffHolder) SetAILastError(err string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.aiLastError = strings.TrimSpace(err)
+}
+
+func (h *DiffHolder) GetAILastError() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.aiLastError
+}
+
 // RegisterHandlers sets up all HTTP routes on the given mux.
 // In dev mode, the "/" handler is NOT registered here — main.go sets up a Vite proxy instead.
 func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos *RepoManager, ai *AIClient) {
@@ -72,6 +85,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 				"repos":         repos.List(),
 				"currentRepoId": repos.CurrentID(),
 				"aiAnalyzing":   holder.IsAIAnalyzing(),
+				"aiError":       holder.GetAILastError(),
 			}
 		}
 
@@ -85,6 +99,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 			"repos":         repos.List(),
 			"currentRepoId": repos.CurrentID(),
 			"aiAnalyzing":   holder.IsAIAnalyzing(),
+			"aiError":       holder.GetAILastError(),
 		}
 	}
 
@@ -111,6 +126,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		// Enrich with AI in the background so repo switching isn't blocked
 		if ai != nil {
 			holder.SetAIAnalyzing(true)
+			holder.SetAILastError("")
 			go func() {
 				AnalyzeDiffAI(diffData, ai, holder)
 				holder.SetAIAnalyzing(false)
@@ -373,6 +389,7 @@ func RegisterHandlers(mux *http.ServeMux, cfg *Config, holder *DiffHolder, repos
 		// Enrich with AI in the background
 		if ai != nil {
 			holder.SetAIAnalyzing(true)
+			holder.SetAILastError("")
 			go func() {
 				AnalyzeDiffAI(diffData, ai, holder)
 				holder.SetAIAnalyzing(false)

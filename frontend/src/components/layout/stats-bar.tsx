@@ -1,4 +1,4 @@
-import { AlignJustify, Columns2, FileText } from "lucide-react"
+import { AlignJustify, AlertTriangle, Columns2, FileText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { useAppStore } from "@/stores/app-store"
@@ -8,6 +8,7 @@ export function StatsBar() {
   const reviewedFiles = useAppStore((s) => s.reviewedFiles)
   const diffStyle = useAppStore((s) => s.diffStyle)
   const setDiffStyle = useAppStore((s) => s.setDiffStyle)
+  const aiError = useAppStore((s) => s.aiError)
 
   if (!stats) return null
 
@@ -66,6 +67,17 @@ export function StatsBar() {
       <Badge variant="secondary" className="font-mono text-xs">
         Reviewed: {reviewedFiles.size}/{stats.totalFiles}
       </Badge>
+
+      {aiError && (
+        <Badge
+          variant="destructive"
+          className="max-w-[560px] gap-1.5 font-mono text-xs"
+          title={aiError}
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="truncate">AI analysis failed: {aiError}</span>
+        </Badge>
+      )}
 
       <div className="ml-auto flex items-center rounded-md border border-border">
         <button

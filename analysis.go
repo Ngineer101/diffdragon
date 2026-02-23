@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // riskPattern defines a pattern to match against file paths or diff content,
@@ -81,7 +84,7 @@ func AnalyzeDiff(data *DiffData, ai *AIClient) {
 	}
 
 	if ai != nil {
-		enrichRiskWithAI(data.Files, ai)
+		_ = enrichRiskWithAI(data.Files, ai)
 	}
 
 	// Sort files: highest risk first
@@ -94,6 +97,7 @@ func AnalyzeDiff(data *DiffData, ai *AIClient) {
 // Risk analysis is done by AI in the background.
 func AnalyzeDiffHeuristics(data *DiffData) {
 	for _, file := range data.Files {
+		scoreFileRiskHeuristic(file)
 		classifySemanticGroupHeuristic(file)
 	}
 }
@@ -111,7 +115,14 @@ func AnalyzeDiffAI(data *DiffData, ai *AIClient, holder *DiffHolder) {
 		files[i] = data.Files[i]
 	}
 
-	enrichRiskWithAI(files, ai)
+	err := enrichRiskWithAI(files, ai)
+	if holder != nil {
+		if err != nil {
+			holder.SetAILastError(err.Error())
+		} else {
+			holder.SetAILastError("")
+		}
+	}
 
 	// Sort files by the new risk scores
 	sort.Slice(files, func(i, j int) bool {
@@ -275,12 +286,48 @@ func classifySemanticGroupHeuristic(file *DiffFile) {
 	file.SemanticGroup = "feature"
 }
 
-func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
-	const concurrency = 3
+func enrichRiskWithAI(files []*DiffFile, ai *AIClient) error {
+	const preflightTimeout = 4 * time.Second
+	const perFileTimeout = 25 * time.Second
+
+	concurrency := ai.RiskConcurrency()
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	preflightCtx, cancelPreflight := context.WithTimeout(context.Background(), preflightTimeout)
+	preflightErr := ai.Preflight(preflightCtx)
+	cancelPreflight()
+	if preflightErr != nil {
+		log.Printf("AI risk analysis skipped: %v", preflightErr)
+		for _, f := range files {
+			f.RiskReasons = mergeReasons(f.RiskReasons, []string{"AI analysis unavailable; using heuristic risk"})
+		}
+		return preflightErr
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var failFast atomic.Bool
+	var failOnce sync.Once
+	var failErr error
+	setFail := func(err error) {
+		failOnce.Do(func() {
+			failErr = err
+			failFast.Store(true)
+			cancel()
+		})
+	}
+
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
 	for _, file := range files {
+		if failFast.Load() {
+			break
+		}
+
 		wg.Add(1)
 		sem <- struct{}{}
 
@@ -288,15 +335,23 @@ func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			assessment, err := ai.AssessRisk(f)
+			if failFast.Load() {
+				return
+			}
+
+			fileCtx, cancelFile := context.WithTimeout(ctx, perFileTimeout)
+			assessment, err := ai.AssessRiskWithContext(fileCtx, f)
+			cancelFile()
 			if err != nil {
 				log.Printf("AI risk assessment failed for %s: %v", f.Path, err)
-				f.RiskReasons = []string{"AI analysis failed"}
+				f.RiskReasons = mergeReasons(f.RiskReasons, []string{"AI analysis unavailable; using heuristic risk"})
+				setFail(err)
 				return
 			}
 			if assessment == nil {
 				log.Printf("AI risk assessment returned nil for %s", f.Path)
-				f.RiskReasons = []string{"AI analysis unavailable"}
+				f.RiskReasons = mergeReasons(f.RiskReasons, []string{"AI analysis unavailable; using heuristic risk"})
+				setFail(context.Canceled)
 				return
 			}
 
@@ -321,7 +376,15 @@ func enrichRiskWithAI(files []*DiffFile, ai *AIClient) {
 	}
 
 	wg.Wait()
+	if failErr != nil {
+		for _, f := range files {
+			f.RiskReasons = mergeReasons(f.RiskReasons, []string{"AI analysis unavailable; using heuristic risk"})
+		}
+		log.Printf("AI risk analysis failed fast: %v", failErr)
+		return failErr
+	}
 	log.Printf("AI risk analysis complete for %d files", len(files))
+	return nil
 }
 
 func blendRiskScores(heuristic int, ai int, confidence string) int {

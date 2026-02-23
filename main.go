@@ -108,11 +108,19 @@ func main() {
 			log.Fatalf("Failed to parse git diff: %v", err)
 		}
 		diffData = parsedDiff
-		AnalyzeDiff(diffData, aiClient)
+		AnalyzeDiffHeuristics(diffData)
 	}
 
 	// Wrap diff data in a mutex-protected holder for dynamic reloading
 	holder := NewDiffHolder(diffData)
+	if aiClient != nil && diffData != nil {
+		holder.SetAIAnalyzing(true)
+		holder.SetAILastError("")
+		go func() {
+			AnalyzeDiffAI(diffData, aiClient, holder)
+			holder.SetAIAnalyzing(false)
+		}()
+	}
 
 	// Set up HTTP routes
 	mux := http.NewServeMux()
